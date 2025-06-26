@@ -1,11 +1,6 @@
 #![recursion_limit = "512"]
+use burn::{module::Module, tensor::backend::Backend};
 use whisper::model::{load::*, *};
-use burn::{
-    module::Module,
-    tensor::{
-        backend::Backend
-    },
-};
 
 use burn::config::Config;
 use burn::record::{self, DefaultRecorder, Recorder};

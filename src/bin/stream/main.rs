@@ -12,6 +12,7 @@ use burn::{
 };
 use chrono::Local;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::StreamConfig;
 use hound::{self, SampleFormat};
 use num_traits::ToPrimitive;
 use rtrb::{Consumer, RingBuffer};
@@ -30,10 +31,8 @@ use webrtc_vad::{SampleRate, Vad, VadMode};
 use whisper::{
     audio::prep_audio,
     helper::*,
-    model::*,
-    token,
-    token::Language,
-    token::{Gpt2Tokenizer, SpecialToken},
+    model::{self, *},
+    token::{self, Gpt2Tokenizer, Language, SpecialToken},
     transcribe::waveform_to_text,
 };
 
@@ -95,7 +94,7 @@ fn load_model<B: Backend>(
     model_name: &str,
     tensor_device_ref: &B::Device,
 ) -> (Gpt2Tokenizer, WhisperConfig, Whisper<B>) {
-    let bpe = match Gpt2Tokenizer::new() {
+    let bpe = match Gpt2Tokenizer::new(model_name) {
         Ok(bpe) => bpe,
         Err(e) => {
             eprintln!("Failed to load tokenizer: {}", e);
@@ -104,7 +103,7 @@ fn load_model<B: Backend>(
     };
 
     println!("name {model_name}");
-    let whisper_config = match WhisperConfig::load(&format!("{}.cfg", model_name)) {
+    let whisper_config = match WhisperConfig::load(&format!("{}/{}.cfg", model_name, model_name)) {
         Ok(config) => config,
         Err(e) => {
             eprintln!("Failed to load whisper config: {}", e);
@@ -115,7 +114,7 @@ fn load_model<B: Backend>(
     println!("Loading model...");
     let whisper: Whisper<B> = {
         match NamedMpkFileRecorder::<FullPrecisionSettings>::new()
-            .load(format!("{}", model_name).into(), tensor_device_ref)
+            .load(format!("{}/{}", model_name, model_name).into(), tensor_device_ref)
             .map(|record| whisper_config.init(tensor_device_ref).load_record(record))
         {
             Ok(whisper_model) => whisper_model,
@@ -215,16 +214,24 @@ fn process_audio_data(
 }
 
 fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
-    println!("in record thread");
-
     let host = cpal::default_host();
     let device = host
         .default_input_device()
         .expect("Failed to get default input device");
-    let config = device
-        .default_input_config()
-        .expect("Failed to get default input config");
-    let sample_rate = config.sample_rate().0 as f32;
+    let mut configs = device.supported_input_configs().unwrap();
+    let config_range = configs
+        .find(|c| {
+            let min = c.min_sample_rate().0;
+            let max = c.max_sample_rate().0;
+            min <= 16_000 && max >= 16_000
+        })
+        .expect("Device does not support 16 kHz sample rate");
+    let supported_config = config_range.with_sample_rate(cpal::SampleRate(16_000));
+    let config: StreamConfig = supported_config.clone().into();
+    // let config = device
+    //     .default_input_config()
+    //     .expect("Failed to get default input config");
+    let sample_rate = config.sample_rate.0 as f32;
     let mut vad = Vad::new_with_rate(webrtc_vad::SampleRate::Rate16kHz);
     vad.set_mode(VadMode::Aggressive);
     println!("cpal config {config:?}");
@@ -233,7 +240,7 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
     let (mut producer, mut consumer) = RingBuffer::<i16>::new(16384);
     let stream = device
         .build_input_stream(
-            &config.config(),
+            &config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 let data_16k = normalize_audio_data_to_16k(data, &sample_rate);
                 let vad_data_i16_16k: Vec<i16> =
@@ -284,7 +291,6 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                 if speech_active {
                     speech_segment.extend(audio_frame);
                     if speech_segment.len() > MAXIMUM_SAMPLE_COUNT {
-                        println!("sending recorded data");
                         sender
                             .send(speech_segment.clone())
                             .expect("Failed to send data");
@@ -300,7 +306,6 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                         speaking = false;
                         if speech_segment.len() > MINIMUM_SAMPLE_COUNT {
                             //send data to the inference thread
-                            println!("sending recorded data");
                             sender
                                 .send(speech_segment.clone())
                                 .expect("Failed to send data");

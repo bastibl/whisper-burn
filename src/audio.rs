@@ -359,7 +359,9 @@ pub fn stfft<B: Backend>(
         .unsqueeze::<2>()
         .transpose()
         .repeat(&[1, n_fft])
-        * Tensor::arange(0..n_fft as i64, &device).float().unsqueeze::<2>();
+        * Tensor::arange(0..n_fft as i64, &device)
+            .float()
+            .unsqueeze::<2>();
 
     // convolve the input slices with the window and waves
     let real_part = (b.clone().cos() * window.clone().unsqueeze())

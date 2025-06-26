@@ -38,7 +38,7 @@ use whisper::token::Gpt2Tokenizer;
 fn load_whisper_model_file<B: Backend>(
     config: &WhisperConfig,
     filename: &str,
-    device: &B::Device
+    device: &B::Device,
 ) -> Result<Whisper<B>, RecorderError> {
     DefaultRecorder::new()
         .load(filename.into(), device)
@@ -84,7 +84,7 @@ fn main() {
         }
     };
 
-    let bpe = match Gpt2Tokenizer::new() {
+    let bpe = match Gpt2Tokenizer::new(model_name) {
         Ok(bpe) => bpe,
         Err(e) => {
             eprintln!("Failed to load tokenizer: {}", e);
@@ -92,7 +92,7 @@ fn main() {
         }
     };
 
-    let whisper_config = match WhisperConfig::load(&format!("{}.cfg", model_name)) {
+    let whisper_config = match WhisperConfig::load(&format!("{}/{}.cfg", model_name, model_name)) {
         Ok(config) => config,
         Err(e) => {
             eprintln!("Failed to load whisper config: {}", e);
@@ -101,15 +101,17 @@ fn main() {
     };
 
     println!("Loading model...");
-    let whisper: Whisper<Backend> = match load_whisper_model_file(&whisper_config, model_name, &device) {
-        Ok(whisper_model) => whisper_model,
-        Err(e) => {
-            eprintln!("Failed to load whisper model file: {}", e);
-            process::exit(1);
-        }
-    };
+    let whisper: Whisper<Backend> =
+        match load_whisper_model_file(&whisper_config, &format!("{}/{}", model_name, model_name), &device) {
+            Ok(whisper_model) => whisper_model,
+            Err(e) => {
+                eprintln!("Failed to load whisper model file: {}", e);
+                process::exit(1);
+            }
+        };
 
     let whisper = whisper.to_device(&device);
+    println!("Loading model... done");
 
     let (text, _tokens) = match waveform_to_text(&whisper, &bpe, lang, waveform, sample_rate) {
         Ok((text, tokens)) => (text, tokens),

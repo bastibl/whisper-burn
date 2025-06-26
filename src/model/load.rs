@@ -75,7 +75,10 @@ fn load_linear<B: Backend>(
     Ok(linear)
 }
 
-fn load_layer_norm<B: Backend>(path: &str, device: &B::Device) -> Result<nn::LayerNorm<B>, Box<dyn Error>> {
+fn load_layer_norm<B: Backend>(
+    path: &str,
+    device: &B::Device,
+) -> Result<nn::LayerNorm<B>, Box<dyn Error>> {
     let weight = load_tensor::<B, 1>("weight", path, device)?;
     let bias = load_tensor::<B, 1>("bias", path, device)?;
     let eps = load_f32::<B>("eps", path, device)? as f64;
@@ -88,7 +91,9 @@ fn load_layer_norm<B: Backend>(path: &str, device: &B::Device) -> Result<nn::Lay
         epsilon: <f64 as Module<B>>::into_record(eps),
     };
 
-    let layer_norm: nn::LayerNorm<B> = nn::LayerNormConfig::new(n_state).init(device).load_record(record);
+    let layer_norm: nn::LayerNorm<B> = nn::LayerNormConfig::new(n_state)
+        .init(device)
+        .load_record(record);
 
     Ok(layer_norm)
 }
@@ -118,7 +123,7 @@ fn load_multihead_self_attention<B: Backend>(
 
 fn load_multihead_cross_attention<B: Backend>(
     path: &str,
-    device: &B::Device
+    device: &B::Device,
 ) -> Result<MultiHeadCrossAttention<B>, Box<dyn Error>> {
     let query = load_linear(&format!("{}/{}", path, "query"), device)?;
     let key = load_linear(&format!("{}/{}", path, "key"), device)?;
@@ -145,16 +150,16 @@ fn load_mlp<B: Backend>(path: &str, device: &B::Device) -> Result<MLP<B>, Box<dy
 
     let gelu = nn::Gelu::new();
 
-    let mlp = MLP {
-        lin1,
-        lin2,
-        gelu,
-    };
+    let mlp = MLP { lin1, lin2, gelu };
 
     Ok(mlp)
 }
 
-fn load_conv1d<B: Backend>(path: &str, config: Conv1dConfig, device: &B::Device) -> Result<Conv1d<B>, Box<dyn Error>> {
+fn load_conv1d<B: Backend>(
+    path: &str,
+    config: Conv1dConfig,
+    device: &B::Device,
+) -> Result<Conv1d<B>, Box<dyn Error>> {
     let weight = load_tensor::<B, 3>("weight", path, device)?;
     let bias = load_tensor::<B, 1>("bias", path, device)?;
 

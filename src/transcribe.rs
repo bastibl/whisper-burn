@@ -36,8 +36,7 @@ pub fn waveform_to_text<B: Backend>(
     let mut tokens: Vec<usize> = Vec::new();
     //IN THE FOLLOWING CODE, WE WILL PRETTY MUCH ALWAYS ITERATE JUST ONCE, SINCE WE ARE SENDING SUCH SHORT CLIPS OF AUDIO. THIS MEANS FIND CHUNK OVERLAP IS NOT NECESSARY BUT CAN LEAVE IT FOR THE FUTURE
     for (i, mel) in mel_iter.enumerate() {
-        let (new_text, new_tokens) =
-            mels_to_text(whisper, bpe, lang, mel, padding)?;
+        let (new_text, new_tokens) = mels_to_text(whisper, bpe, lang, mel, padding)?;
 
         if let Some((prev_index, curr_index)) =
             find_chunk_overlap(&tokens[..], &new_tokens[..], 40, 3)
