@@ -29,7 +29,7 @@ fn load_audio_waveform<B: Backend>(filename: &str) -> hound::Result<(Vec<f32>, u
             .collect::<hound::Result<_>>()?,
     };
 
-    return Ok((floats, sample_rate));
+    Ok((floats, sample_rate))
 }
 
 use burn::record::{DefaultRecorder, Recorder, RecorderError};

@@ -19,7 +19,7 @@ pub fn waveform_to_text<B: Backend>(
     let device = whisper.devices()[0].clone();
 
     let n_ctx_max_encoder = whisper.encoder_ctx_size();
-    let padding = 10;
+    let padding = 200;
     let n_waveform_samples_per_window = max_waveform_samples(n_ctx_max_encoder - padding);
 
     let mel_iter = waveform_to_mel_tensor(
@@ -58,7 +58,7 @@ pub fn waveform_to_text<B: Backend>(
         //tokens.extend(new_tokens);
 
         text = bpe.decode(&tokens[..], true)?;
-        println!("Chunk {}: {}\n", i, text);
+        // println!("Chunk {}: {}\n", i, text);
 
         //text += &new_text;
     }
