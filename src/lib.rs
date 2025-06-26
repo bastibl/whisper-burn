@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 pub mod audio;
 pub mod helper;
 pub mod model;

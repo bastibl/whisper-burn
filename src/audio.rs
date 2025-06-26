@@ -1,4 +1,5 @@
-use burn::tensor::{activation::relu, backend::Backend, Tensor, ElementConversion};
+use burn::tensor::{activation::relu, backend::Backend, ElementConversion, Tensor};
+use burn::prelude::*;
 
 use crate::helper::*;
 
@@ -37,7 +38,7 @@ pub fn prep_audio<B: Backend>(waveform: Tensor<B, 2>, sample_rate: f64) -> Tenso
     let window = hann_window_device(WINDOW_LENGTH, &device);
     let (stft_real, stft_imag) = stfft(waveform, N_FFT, HOP_LENGTH, window);
 
-    let magnitudes = stft_real.powf(2.0) + stft_imag.powf(2.0);
+    let magnitudes = stft_real.powi_scalar(2) + stft_imag.powi_scalar(2);
     let [n_batch, n_row, n_col] = magnitudes.dims();
     let magnitudes = magnitudes.slice([0..n_batch, 0..n_row, 0..(n_col - 1)]);
 
@@ -92,7 +93,7 @@ fn get_mel_filters_device<B: Backend>(
         .clone()
         .unsqueeze::<2>()
         .transpose()
-        .repeat(1, n_ffefreqs)
+        .repeat(&[1, n_ffefreqs])
         - fftfreqs.unsqueeze();
 
     /*for i in range(n_mels):
@@ -119,7 +120,7 @@ fn get_mel_filters_device<B: Backend>(
     // Slaney-style mel is scaled to be approx constant energy per channel
     //enorm = 2.0 / (mel_f[2 : n_mels + 2] - mel_f[:n_mels])
     let enorm = (mel_f.clone().slice([2..(n_mels + 2)]) - mel_f.clone().slice([0..n_mels]))
-        .powf(-1.0)
+        .powi_scalar(-1)
         * 2.0;
     //weights *= enorm[:, np.newaxis]
     let weights = weights * enorm.unsqueeze::<2>().transpose();
@@ -152,8 +153,12 @@ fn fft_frequencies_device<B: Backend>(
     device: &B::Device,
 ) -> Tensor<B, 1> {
     //return np.fft.rfftfreq(n=n_fft, d=1.0 / sr)
-    Tensor::arange_device(0..(n_fft / 2 + 1), device).float()
-        .mul_scalar(sample_rate / n_fft as f64)
+    Tensor::from_ints(
+        &*(0..(n_fft / 2 + 1)).map(|v| v as i32).collect::<Vec<i32>>(),
+        device,
+    )
+    .float()
+    .mul_scalar(sample_rate / n_fft as f64)
 }
 
 fn test_fft_frequencies<B: Backend>() {
@@ -187,9 +192,13 @@ fn mel_frequencies_device<B: Backend>(
     let max_mel = hz_to_mel(fmax, htk);
 
     //mels = np.linspace(min_mel, max_mel, n_mels)
-    let mels = Tensor::arange_device(0..n_mels, device).float()
-        .mul_scalar((max_mel - min_mel) / (n_mels - 1) as f64)
-        .add_scalar(min_mel);
+    let mels = Tensor::from_ints(
+        &*(0..n_mels).map(|v| v as i32).collect::<Vec<i32>>(),
+        device,
+    )
+    .float()
+    .mul_scalar((max_mel - min_mel) / (n_mels - 1) as f64)
+    .add_scalar(min_mel);
 
     //hz: np.ndarray = mel_to_hz(mels, htk=htk)
     mel_to_hz_tensor(mels, htk)
@@ -270,11 +279,14 @@ pub fn hann_window<B: Backend>(window_length: usize) -> Tensor<B, 1> {
 }
 
 pub fn hann_window_device<B: Backend>(window_length: usize, device: &B::Device) -> Tensor<B, 1> {
-    Tensor::arange_device(0..window_length, device)
-        .float()
-        .mul_scalar(std::f64::consts::PI / window_length as f64)
-        .sin()
-        .powf(2.0)
+    Tensor::from_ints(
+        &*(0..window_length).map(|v| v as i32).collect::<Vec<i32>>(),
+        device,
+    )
+    .float()
+    .mul_scalar(std::f64::consts::PI / window_length as f64)
+    .sin()
+    .powi_scalar(2)
 }
 
 /// Short time Fourier transform that takes a waveform input of size (n_batch, n_sample) and returns (real_part, imaginary_part) frequency spectrums.
@@ -312,9 +324,9 @@ pub fn stfft<B: Backend>(
         let right_pad = n_fft - orig_window_length - left_pad;
         Tensor::cat(
             vec![
-                Tensor::zeros_device([left_pad], &device),
+                Tensor::zeros([left_pad], &device),
                 window,
-                Tensor::zeros_device([right_pad], &device),
+                Tensor::zeros([right_pad], &device),
             ],
             0,
         )
@@ -331,7 +343,7 @@ pub fn stfft<B: Backend>(
     let num_parts = div_roundup(n_fft, hop_length);
     let n_hops = div_roundup(input_size, hop_length);
     let padded_input_size = n_hops * hop_length;
-    let padding = Tensor::zeros_device([n_batch, padded_input_size - input_size], &device);
+    let padding = Tensor::zeros([n_batch, padded_input_size - input_size], &device);
     let template = Tensor::cat(vec![input, padding], 1)
         .reshape([n_batch, n_hops, hop_length])
         .transpose();
@@ -347,13 +359,21 @@ pub fn stfft<B: Backend>(
 
     // construct matrix of wave angles
     let coe = std::f64::consts::PI * 2.0 / n_fft as f64;
-    let b = Tensor::arange_device(0..n_freq, &device)
+    let b = Tensor::<B, 1, Int>::from_ints(
+        &*(0..n_freq).map(|v| v as i32).collect::<Vec<i32>>(),
+        &device,
+    )
+    .float()
+    .mul_scalar(coe)
+    .unsqueeze::<2>()
+    .transpose()
+    .repeat(&[1, n_fft])
+        * Tensor::<B, 1, Int>::from_ints(
+            &*(0..n_fft).map(|v| v as i32).collect::<Vec<i32>>(),
+            &device,
+        )
         .float()
-        .mul_scalar(coe)
-        .unsqueeze::<2>()
-        .transpose()
-        .repeat(1, n_fft)
-        * Tensor::arange_device(0..n_fft, &device).float().unsqueeze::<2>();
+        .unsqueeze::<2>();
 
     // convolve the input slices with the window and waves
     let real_part = (b.clone().cos() * window.clone().unsqueeze())

@@ -1,15 +1,11 @@
+#![recursion_limit = "512"]
 use whisper::model::{load::*, *};
-
 use burn::{
     module::Module,
     tensor::{
-        self,
-        backend::{self, Backend},
-        Int, Tensor,
+        backend::Backend
     },
 };
-
-use burn_tch::{TchBackend, TchDevice};
 
 use burn::config::Config;
 use burn::record::{self, DefaultRecorder, Recorder};
@@ -29,11 +25,11 @@ fn main() {
         }
     };
 
-    type Backend = TchBackend<f32>;
-    let device = TchDevice::Cpu;
+    type Backend = burn::backend::Wgpu;
+    let device = Default::default();
 
     let (whisper, whisper_config): (Whisper<Backend>, WhisperConfig) =
-        match load_whisper(&model_name) {
+        match load_whisper(&model_name, &device) {
             Ok(model) => model,
             Err(e) => {
                 eprintln!("Error loading model {}: {}", model_name, e);

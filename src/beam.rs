@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 #[derive(Clone)]
 pub struct BeamNode<T: Clone> {
     pub seq: Vec<T>,

@@ -3,11 +3,12 @@ pub mod load;
 use std::f32::NEG_INFINITY;
 
 use burn::{
+    prelude::*,
     config::Config,
     module::{Module, Param},
     nn::{
         self,
-        conv::{Conv1d, Conv1dConfig, Conv1dRecord},
+        conv::{Conv1d, Conv1dConfig},
         PaddingConfig1d,
     },
     tensor::{activation::softmax, backend::Backend, module::embedding, Distribution, Int, Tensor},
@@ -20,19 +21,14 @@ pub struct WhisperConfig {
 }
 
 impl WhisperConfig {
-    pub fn init<B: Backend>(&self) -> Whisper<B> {
+    pub fn init<B: Backend>(&self, device: &B::Device) -> Whisper<B> {
         let n_audio_state = self.audio_encoder_config.n_audio_state;
         let n_text_state = self.text_decoder_config.n_text_state;
 
-        assert!(
-            n_audio_state == n_text_state,
-            "Audio encoder state size {} must be equal to text decoder state size {}.",
-            n_audio_state,
-            n_text_state
-        );
+        assert!(n_audio_state == n_text_state,);
 
-        let encoder = self.audio_encoder_config.init();
-        let decoder = self.text_decoder_config.init();
+        let encoder = self.audio_encoder_config.init(device);
+        let decoder = self.text_decoder_config.init(device);
 
         Whisper { encoder, decoder }
     }
@@ -80,33 +76,33 @@ pub struct TextDecoderConfig {
 }
 
 impl TextDecoderConfig {
-    pub fn init<B: Backend>(&self) -> TextDecoder<B> {
+    pub fn init<B: Backend>(&self, device: &B::Device) -> TextDecoder<B> {
         let token_embedding = Tensor::random(
             [self.n_vocab, self.n_text_state],
             Distribution::Normal(0.0, 1.0),
-        )
-        .into();
+            device,
+        );
         let positional_embedding = Tensor::random(
             [self.n_text_ctx, self.n_text_state],
             Distribution::Normal(0.0, 1.0),
-        )
-        .into();
+            device,
+        );
         let blocks: Vec<_> = (0..self.n_text_layer)
             .into_iter()
             .map(|_| {
-                ResidualDecoderAttentionBlockConfig::new(self.n_text_state, self.n_text_head).init()
+                ResidualDecoderAttentionBlockConfig::new(self.n_text_state, self.n_text_head).init(device)
             })
             .collect();
-        let ln = nn::LayerNormConfig::new(self.n_text_state).init();
+        let ln = nn::LayerNormConfig::new(self.n_text_state).init(device);
 
-        let mask = attn_decoder_mask(self.n_text_ctx).into();
+        let mask = Param::from_tensor(attn_decoder_mask(self.n_text_ctx, device));
 
         let n_vocab = self.n_vocab;
         let n_text_ctx = self.n_text_ctx;
 
         TextDecoder {
-            token_embedding,
-            positional_embedding,
+            token_embedding: Param::from_tensor(token_embedding),
+            positional_embedding: Param::from_tensor(positional_embedding),
             blocks,
             ln,
             mask,
@@ -129,14 +125,9 @@ pub struct TextDecoder<B: Backend> {
 
 impl<B: Backend> TextDecoder<B> {
     fn forward(&self, x: Tensor<B, 2, Int>, xa: Tensor<B, 3>) -> Tensor<B, 3> {
-        let [n_batch, seq_len] = x.dims();
+        let [_n_batch, seq_len] = x.dims();
 
-        assert!(
-            seq_len <= self.n_text_ctx,
-            "Token sequence length {} must not exceed {}.",
-            seq_len,
-            self.n_text_ctx
-        );
+        assert!(seq_len <= self.n_text_ctx,);
 
         let x = embedding(self.token_embedding.val(), x)
             + self
@@ -171,29 +162,30 @@ pub struct AudioEncoderConfig {
 }
 
 impl AudioEncoderConfig {
-    pub fn init<B: Backend>(&self) -> AudioEncoder<B> {
+    pub fn init<B: Backend>(&self, device: &B::Device) -> AudioEncoder<B> {
         let conv1 = Conv1dConfig::new(self.n_mels, self.n_audio_state, 3)
             .with_padding(PaddingConfig1d::Explicit(1))
-            .init();
-        let gelu1 = nn::GELU::new();
+            .init(device);
+        let gelu1 = nn::Gelu::new();
         let conv2 = Conv1dConfig::new(self.n_audio_state, self.n_audio_state, 3)
             .with_padding(PaddingConfig1d::Explicit(1))
             .with_stride(2)
-            .init();
-        let gelu2 = nn::GELU::new();
+            .init(device);
+        let gelu2 = nn::Gelu::new();
         let blocks: Vec<_> = (0..self.n_audio_layer)
             .into_iter()
             .map(|_| {
                 ResidualEncoderAttentionBlockConfig::new(self.n_audio_state, self.n_audio_head)
-                    .init()
+                    .init(device)
             })
             .collect();
-        let ln_post = nn::LayerNormConfig::new(self.n_audio_state).init();
-        let positional_embedding = Tensor::random(
+        let ln_post = nn::LayerNormConfig::new(self.n_audio_state).init(device);
+        let positional_embedding: Tensor<B, 2, Float> = Tensor::random(
             [self.n_audio_ctx, self.n_audio_state],
             Distribution::Normal(0.0, 1.0),
-        )
-        .into();
+            device,
+        );
+        let positional_embedding = Param::from_tensor(positional_embedding);
         let n_mels = self.n_mels;
         let n_audio_ctx = self.n_audio_ctx;
 
@@ -214,9 +206,9 @@ impl AudioEncoderConfig {
 #[derive(Module, Debug)]
 pub struct AudioEncoder<B: Backend> {
     conv1: Conv1d<B>,
-    gelu1: nn::GELU,
+    gelu1: nn::Gelu,
     conv2: Conv1d<B>,
-    gelu2: nn::GELU,
+    gelu2: nn::Gelu,
     blocks: Vec<ResidualEncoderAttentionBlock<B>>,
     ln_post: nn::LayerNorm<B>,
     positional_embedding: Param<Tensor<B, 2>>,
@@ -228,17 +220,8 @@ impl<B: Backend> AudioEncoder<B> {
     fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
         let [_, n_mels, n_ctx] = x.dims();
 
-        assert!(
-            n_mels == self.n_mels,
-            "Audio mel spectrum size must be {}.",
-            self.n_mels
-        );
-        assert!(
-            n_ctx <= self.n_audio_ctx,
-            "Audio length {} cannot exceed {}.",
-            n_ctx,
-            self.n_audio_ctx
-        );
+        assert!(n_mels == self.n_mels,);
+        assert!(n_ctx <= self.n_audio_ctx,);
 
         let x = self.gelu1.forward(self.conv1.forward(x));
         let x = self.gelu2.forward(self.conv2.forward(x));
@@ -271,12 +254,12 @@ pub struct ResidualEncoderAttentionBlockConfig {
 }
 
 impl ResidualEncoderAttentionBlockConfig {
-    pub fn init<B: Backend>(&self) -> ResidualEncoderAttentionBlock<B> {
-        let attn = MultiHeadSelfAttentionConfig::new(self.n_state, self.n_head).init();
-        let attn_ln = nn::LayerNormConfig::new(self.n_state).init();
+    pub fn init<B: Backend>(&self, device: &B::Device) -> ResidualEncoderAttentionBlock<B> {
+        let attn = MultiHeadSelfAttentionConfig::new(self.n_state, self.n_head).init(device);
+        let attn_ln = nn::LayerNormConfig::new(self.n_state).init(device);
 
-        let mlp = MLPConfig::new(self.n_state).init();
-        let mlp_ln = nn::LayerNormConfig::new(self.n_state).init();
+        let mlp = MLPConfig::new(self.n_state).init(device);
+        let mlp_ln = nn::LayerNormConfig::new(self.n_state).init(device);
 
         ResidualEncoderAttentionBlock {
             attn,
@@ -310,15 +293,15 @@ pub struct ResidualDecoderAttentionBlockConfig {
 }
 
 impl ResidualDecoderAttentionBlockConfig {
-    pub fn init<B: Backend>(&self) -> ResidualDecoderAttentionBlock<B> {
-        let attn = MultiHeadSelfAttentionConfig::new(self.n_state, self.n_head).init();
-        let attn_ln = nn::LayerNormConfig::new(self.n_state).init();
+    pub fn init<B: Backend>(&self, device: &B::Device) -> ResidualDecoderAttentionBlock<B> {
+        let attn = MultiHeadSelfAttentionConfig::new(self.n_state, self.n_head).init(device);
+        let attn_ln = nn::LayerNormConfig::new(self.n_state).init(device);
 
-        let cross_attn = MultiHeadCrossAttentionConfig::new(self.n_state, self.n_head).init();
-        let cross_attn_ln = nn::LayerNormConfig::new(self.n_state).init();
+        let cross_attn = MultiHeadCrossAttentionConfig::new(self.n_state, self.n_head).init(device);
+        let cross_attn_ln = nn::LayerNormConfig::new(self.n_state).init(device);
 
-        let mlp = MLPConfig::new(self.n_state).init();
-        let mlp_ln = nn::LayerNormConfig::new(self.n_state).init();
+        let mlp = MLPConfig::new(self.n_state).init(device);
+        let mlp_ln = nn::LayerNormConfig::new(self.n_state).init(device);
 
         ResidualDecoderAttentionBlock {
             attn,
@@ -356,10 +339,10 @@ pub struct MLPConfig {
 }
 
 impl MLPConfig {
-    pub fn init<B: Backend>(&self) -> MLP<B> {
-        let lin1 = nn::LinearConfig::new(self.n_state, 4 * self.n_state).init();
-        let gelu = nn::GELU::new();
-        let lin2 = nn::LinearConfig::new(4 * self.n_state, self.n_state).init();
+    pub fn init<B: Backend>(&self, device: &B::Device) -> MLP<B> {
+        let lin1 = nn::LinearConfig::new(self.n_state, 4 * self.n_state).init(device);
+        let gelu = nn::Gelu::new();
+        let lin2 = nn::LinearConfig::new(4 * self.n_state, self.n_state).init(device);
 
         MLP { lin1, gelu, lin2 }
     }
@@ -368,7 +351,7 @@ impl MLPConfig {
 #[derive(Module, Debug)]
 pub struct MLP<B: Backend> {
     lin1: nn::Linear<B>,
-    gelu: nn::GELU,
+    gelu: nn::Gelu,
     lin2: nn::Linear<B>,
 }
 
@@ -389,21 +372,16 @@ pub struct MultiHeadSelfAttentionConfig {
 }
 
 impl MultiHeadSelfAttentionConfig {
-    fn init<B: Backend>(&self) -> MultiHeadSelfAttention<B> {
-        assert!(
-            self.n_state % self.n_head == 0,
-            "State size {} must be a multiple of head size {}",
-            self.n_state,
-            self.n_head
-        );
+    fn init<B: Backend>(&self, device: &B::Device) -> MultiHeadSelfAttention<B> {
+        assert!(self.n_state % self.n_head == 0,);
 
         let n_head = self.n_head;
-        let query = nn::LinearConfig::new(self.n_state, self.n_state).init();
+        let query = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
         let key = nn::LinearConfig::new(self.n_state, self.n_state)
             .with_bias(false)
-            .init();
-        let value = nn::LinearConfig::new(self.n_state, self.n_state).init();
-        let out = nn::LinearConfig::new(self.n_state, self.n_state).init();
+            .init(device);
+        let value = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
+        let out = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
 
         MultiHeadSelfAttention {
             n_head,
@@ -443,21 +421,16 @@ pub struct MultiHeadCrossAttentionConfig {
 }
 
 impl MultiHeadCrossAttentionConfig {
-    fn init<B: Backend>(&self) -> MultiHeadCrossAttention<B> {
-        assert!(
-            self.n_state % self.n_head == 0,
-            "State size {} must be a multiple of head size {}",
-            self.n_state,
-            self.n_head
-        );
+    fn init<B: Backend>(&self, device: &B::Device) -> MultiHeadCrossAttention<B> {
+        assert!(self.n_state % self.n_head == 0,);
 
         let n_head = self.n_head;
-        let query = nn::LinearConfig::new(self.n_state, self.n_state).init();
+        let query = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
         let key = nn::LinearConfig::new(self.n_state, self.n_state)
             .with_bias(false)
-            .init();
-        let value = nn::LinearConfig::new(self.n_state, self.n_state).init();
-        let out = nn::LinearConfig::new(self.n_state, self.n_state).init();
+            .init(device);
+        let value = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
+        let out = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
 
         MultiHeadCrossAttention {
             n_head,
@@ -532,11 +505,12 @@ pub fn qkv_attention<B: Backend>(
     return o;
 }
 
-pub fn attn_decoder_mask<B: Backend>(seq_length: usize) -> Tensor<B, 2> {
-    let mut mask = Tensor::<B, 2>::zeros([seq_length, seq_length]);
+pub fn attn_decoder_mask<B: Backend>(seq_length: usize, device: &B::Device) -> Tensor<B, 2> {
+    let mut mask = Tensor::<B, 2>::zeros([seq_length, seq_length], device);
 
     for i in 0..(seq_length - 1) {
-        let values = Tensor::<B, 2>::zeros([1, seq_length - (i + 1)]).add_scalar(NEG_INFINITY);
+        let values =
+            Tensor::<B, 2>::zeros([1, seq_length - (i + 1)], device).add_scalar(NEG_INFINITY);
         mask = mask.slice_assign([i..i + 1, i + 1..seq_length], values);
     }
 

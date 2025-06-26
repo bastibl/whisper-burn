@@ -1,41 +1,19 @@
-use std::collections::HashMap;
-use std::iter;
-
-use whisper::helper::*;
+#![recursion_limit = "512"]
+use burn::{config::Config, module::Module, tensor::backend::Backend};
+use hound::{self, SampleFormat};
+use strum::IntoEnumIterator;
 use whisper::model::*;
-use whisper::{token, token::Language};
+use whisper::token::Language;
 use whisper::transcribe::waveform_to_text;
 
-use strum::IntoEnumIterator;
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "wgpu-backend")] {
-        use burn_wgpu::{WgpuBackend, WgpuDevice, AutoGraphicsApi};
-    } else if #[cfg(feature = "torch-backend")] {
-        use burn_tch::{TchBackend, TchDevice};
-    }
-}
-
-use burn::{
-    config::Config,
-    module::Module,
-    tensor::{
-        self,
-        backend::{self, Backend},
-        Data, Float, Int, Tensor,
-    },
-};
-
-use hound::{self, SampleFormat};
-
 fn load_audio_waveform<B: Backend>(filename: &str) -> hound::Result<(Vec<f32>, usize)> {
-    let mut reader = hound::WavReader::open(filename)?;
+    let reader = hound::WavReader::open(filename)?;
     let spec = reader.spec();
 
-    let duration = reader.duration() as usize;
+    let _duration = reader.duration() as usize;
     let channels = spec.channels as usize;
     let sample_rate = spec.sample_rate as usize;
-    let bits_per_sample = spec.bits_per_sample;
+    let _bits_per_sample = spec.bits_per_sample;
     let sample_format = spec.sample_format;
 
     assert_eq!(sample_rate, 16000, "The audio sample rate must be 16k.");
@@ -54,33 +32,24 @@ fn load_audio_waveform<B: Backend>(filename: &str) -> hound::Result<(Vec<f32>, u
     return Ok((floats, sample_rate));
 }
 
-use num_traits::ToPrimitive;
-use whisper::audio::prep_audio;
-use whisper::token::{Gpt2Tokenizer, SpecialToken};
-
 use burn::record::{DefaultRecorder, Recorder, RecorderError};
+use whisper::token::Gpt2Tokenizer;
 
 fn load_whisper_model_file<B: Backend>(
     config: &WhisperConfig,
     filename: &str,
+    device: &B::Device
 ) -> Result<Whisper<B>, RecorderError> {
     DefaultRecorder::new()
-        .load(filename.into())
-        .map(|record| config.init().load_record(record))
+        .load(filename.into(), device)
+        .map(|record| config.init(device).load_record(record))
 }
 
 use std::{env, fs, process};
 
 fn main() {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "wgpu-backend")] {
-            type Backend = WgpuBackend<AutoGraphicsApi, f32, i32>;
-            let device = WgpuDevice::BestAvailable;
-        } else if #[cfg(feature = "torch-backend")] {
-            type Backend = TchBackend<f32>;
-            let device = TchDevice::Cuda(0);
-        }
-    }
+    type Backend = burn::backend::Wgpu;
+    let device = Default::default();
 
     let args: Vec<String> = env::args().collect();
 
@@ -97,7 +66,7 @@ fn main() {
 
     let lang_str = &args[3];
     let lang = match Language::iter().find(|lang| lang.as_str() == lang_str) {
-        Some(lang) => lang, 
+        Some(lang) => lang,
         None => {
             eprintln!("Invalid language abbreviation: {}", lang_str);
             process::exit(1);
@@ -132,7 +101,7 @@ fn main() {
     };
 
     println!("Loading model...");
-    let whisper: Whisper<Backend> = match load_whisper_model_file(&whisper_config, model_name) {
+    let whisper: Whisper<Backend> = match load_whisper_model_file(&whisper_config, model_name, &device) {
         Ok(whisper_model) => whisper_model,
         Err(e) => {
             eprintln!("Failed to load whisper model file: {}", e);
@@ -142,7 +111,7 @@ fn main() {
 
     let whisper = whisper.to_device(&device);
 
-    let (text, tokens) = match waveform_to_text(&whisper, &bpe, lang, waveform, sample_rate) {
+    let (text, _tokens) = match waveform_to_text(&whisper, &bpe, lang, waveform, sample_rate) {
         Ok((text, tokens)) => (text, tokens),
         Err(e) => {
             eprintln!("Error during transcription: {}", e);

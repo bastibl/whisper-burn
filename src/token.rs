@@ -1,7 +1,7 @@
 use serde::ser::StdError;
 use std::result;
 
-use tokenizers::{AddedToken, Tokenizer};
+use tokenizers::AddedToken;
 
 pub type Result<T> = result::Result<T, Box<(dyn StdError + Send + Sync + 'static)>>;
 
@@ -12,7 +12,7 @@ pub struct Gpt2Tokenizer {
 impl Gpt2Tokenizer {
     pub fn new() -> Result<Self> {
         //let mut tokenizer = tokenizers::Tokenizer::from_pretrained("gpt2", None)?;
-        let mut tokenizer = tokenizers::Tokenizer::from_file("tokenizer.json")?;
+        let tokenizer = tokenizers::Tokenizer::from_file("tokenizer.json")?;
         //tokenizer.add_special_tokens(&construct_special_tokens());
 
         Ok(Self { tokenizer })
@@ -31,12 +31,12 @@ impl Gpt2Tokenizer {
 
     pub fn decode(&self, tokens: &[usize], skip_special: bool) -> Result<String> {
         self.tokenizer
-            .decode(tokens.iter().map(|t| *t as u32).collect(), skip_special)
+            .decode(&(tokens.iter().map(|t| *t as u32).collect::<Vec<u32>>()), skip_special)
     }
 
     pub fn is_special(&self, token: usize) -> bool {
         self.tokenizer
-            .decode(vec![token as u32], true)
+            .decode(&[token as u32], true)
             .ok()
             .map(|s| s.is_empty())
             .unwrap_or(false)
