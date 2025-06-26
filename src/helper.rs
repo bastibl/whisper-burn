@@ -1,8 +1,7 @@
-use burn::tensor::{
-    activation::relu, backend::Backend, BasicOps, Element, Numeric, Tensor,
-    TensorKind,
-};
 use burn::prelude::*;
+use burn::tensor::{
+    activation::relu, backend::Backend, BasicOps, Element, Numeric, Tensor, TensorKind,
+};
 
 pub fn tensor_max_scalar<B: Backend, const D: usize>(x: Tensor<B, D>, max: f64) -> Tensor<B, D> {
     relu(x.sub_scalar(max)).add_scalar(max)
@@ -42,6 +41,6 @@ where
     <K as BasicOps<B>>::Elem: Element,
 {
     let len = x.dims()[dim];
-    let indices = -Tensor::from_ints(&*(0..len).map(|v| v as i32).collect::<Vec<i32>>(), &x.device()) + (len - 1) as i64;
+    let indices = -Tensor::arange(0..len as i64, &x.device()) + (len - 1) as i64;
     x.select(dim, indices)
 }

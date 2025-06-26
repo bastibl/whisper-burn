@@ -3,7 +3,6 @@ pub mod load;
 use std::f32::NEG_INFINITY;
 
 use burn::{
-    prelude::*,
     config::Config,
     module::{Module, Param},
     nn::{
@@ -11,6 +10,7 @@ use burn::{
         conv::{Conv1d, Conv1dConfig},
         PaddingConfig1d,
     },
+    prelude::*,
     tensor::{activation::softmax, backend::Backend, module::embedding, Distribution, Int, Tensor},
 };
 
@@ -61,6 +61,10 @@ impl<B: Backend> Whisper<B> {
         self.encoder.ctx_size()
     }
 
+    pub fn encoder_mel_size(&self) -> usize {
+        self.encoder.n_mels
+    }
+
     pub fn decoder_ctx_size(&self) -> usize {
         self.decoder.ctx_size()
     }
@@ -90,7 +94,8 @@ impl TextDecoderConfig {
         let blocks: Vec<_> = (0..self.n_text_layer)
             .into_iter()
             .map(|_| {
-                ResidualDecoderAttentionBlockConfig::new(self.n_text_state, self.n_text_head).init(device)
+                ResidualDecoderAttentionBlockConfig::new(self.n_text_state, self.n_text_head)
+                    .init(device)
             })
             .collect();
         let ln = nn::LayerNormConfig::new(self.n_text_state).init(device);
@@ -244,6 +249,10 @@ impl<B: Backend> AudioEncoder<B> {
 
     fn ctx_size(&self) -> usize {
         self.n_audio_ctx
+    }
+
+    fn mel_size(&self) -> usize {
+        self.n_mels
     }
 }
 

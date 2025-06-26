@@ -1,11 +1,10 @@
 use burn::tensor::{activation::relu, backend::Backend, ElementConversion, Tensor};
-use burn::prelude::*;
 
 use crate::helper::*;
 
 const N_FFT: usize = 400;
 const HOP_LENGTH: usize = 160;
-const N_MELS: usize = 80;
+// const N_MELS: usize = 80;
 const WINDOW_LENGTH: usize = N_FFT;
 
 /// Returns the maximum number of waveform samples that can be submitted to `prep_audio`
@@ -32,7 +31,11 @@ fn is_odd(x: usize) -> bool {
 /// n_samples_padded = if n_fft is even: n_samples + n_fft else: n_samples + n_fft - 1,
 /// n_fft = 400,
 /// hop_length = 160.
-pub fn prep_audio<B: Backend>(waveform: Tensor<B, 2>, sample_rate: f64) -> Tensor<B, 3> {
+pub fn prep_audio<B: Backend>(
+    waveform: Tensor<B, 2>,
+    sample_rate: f64,
+    n_mels: usize,
+) -> Tensor<B, 3> {
     let device = waveform.device();
 
     let window = hann_window_device(WINDOW_LENGTH, &device);
@@ -42,7 +45,7 @@ pub fn prep_audio<B: Backend>(waveform: Tensor<B, 2>, sample_rate: f64) -> Tenso
     let [n_batch, n_row, n_col] = magnitudes.dims();
     let magnitudes = magnitudes.slice([0..n_batch, 0..n_row, 0..(n_col - 1)]);
 
-    let mel_spec = get_mel_filters_device(sample_rate, N_FFT, N_MELS, false, &device)
+    let mel_spec = get_mel_filters_device(sample_rate, N_FFT, n_mels, false, &device)
         .unsqueeze()
         .matmul(magnitudes);
 
@@ -153,12 +156,9 @@ fn fft_frequencies_device<B: Backend>(
     device: &B::Device,
 ) -> Tensor<B, 1> {
     //return np.fft.rfftfreq(n=n_fft, d=1.0 / sr)
-    Tensor::from_ints(
-        &*(0..(n_fft / 2 + 1)).map(|v| v as i32).collect::<Vec<i32>>(),
-        device,
-    )
-    .float()
-    .mul_scalar(sample_rate / n_fft as f64)
+    Tensor::arange(0..(n_fft / 2 + 1) as i64, device)
+        .float()
+        .mul_scalar(sample_rate / n_fft as f64)
 }
 
 fn test_fft_frequencies<B: Backend>() {
@@ -192,13 +192,10 @@ fn mel_frequencies_device<B: Backend>(
     let max_mel = hz_to_mel(fmax, htk);
 
     //mels = np.linspace(min_mel, max_mel, n_mels)
-    let mels = Tensor::from_ints(
-        &*(0..n_mels).map(|v| v as i32).collect::<Vec<i32>>(),
-        device,
-    )
-    .float()
-    .mul_scalar((max_mel - min_mel) / (n_mels - 1) as f64)
-    .add_scalar(min_mel);
+    let mels = Tensor::arange(0..n_mels as i64, device)
+        .float()
+        .mul_scalar((max_mel - min_mel) / (n_mels - 1) as f64)
+        .add_scalar(min_mel);
 
     //hz: np.ndarray = mel_to_hz(mels, htk=htk)
     mel_to_hz_tensor(mels, htk)
@@ -279,14 +276,11 @@ pub fn hann_window<B: Backend>(window_length: usize) -> Tensor<B, 1> {
 }
 
 pub fn hann_window_device<B: Backend>(window_length: usize, device: &B::Device) -> Tensor<B, 1> {
-    Tensor::from_ints(
-        &*(0..window_length).map(|v| v as i32).collect::<Vec<i32>>(),
-        device,
-    )
-    .float()
-    .mul_scalar(std::f64::consts::PI / window_length as f64)
-    .sin()
-    .powi_scalar(2)
+    Tensor::arange(0..window_length as i64, device)
+        .float()
+        .mul_scalar(std::f64::consts::PI / window_length as f64)
+        .sin()
+        .powi_scalar(2)
 }
 
 /// Short time Fourier transform that takes a waveform input of size (n_batch, n_sample) and returns (real_part, imaginary_part) frequency spectrums.
@@ -359,21 +353,13 @@ pub fn stfft<B: Backend>(
 
     // construct matrix of wave angles
     let coe = std::f64::consts::PI * 2.0 / n_fft as f64;
-    let b = Tensor::<B, 1, Int>::from_ints(
-        &*(0..n_freq).map(|v| v as i32).collect::<Vec<i32>>(),
-        &device,
-    )
-    .float()
-    .mul_scalar(coe)
-    .unsqueeze::<2>()
-    .transpose()
-    .repeat(&[1, n_fft])
-        * Tensor::<B, 1, Int>::from_ints(
-            &*(0..n_fft).map(|v| v as i32).collect::<Vec<i32>>(),
-            &device,
-        )
+    let b = Tensor::arange(0..n_freq as i64, &device)
         .float()
-        .unsqueeze::<2>();
+        .mul_scalar(coe)
+        .unsqueeze::<2>()
+        .transpose()
+        .repeat(&[1, n_fft])
+        * Tensor::arange(0..n_fft as i64, &device).float().unsqueeze::<2>();
 
     // convolve the input slices with the window and waves
     let real_part = (b.clone().cos() * window.clone().unsqueeze())
