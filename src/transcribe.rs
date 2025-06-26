@@ -35,8 +35,8 @@ pub fn waveform_to_text<B: Backend>(
     let mut text = String::new();
     let mut tokens: Vec<usize> = Vec::new();
     //IN THE FOLLOWING CODE, WE WILL PRETTY MUCH ALWAYS ITERATE JUST ONCE, SINCE WE ARE SENDING SUCH SHORT CLIPS OF AUDIO. THIS MEANS FIND CHUNK OVERLAP IS NOT NECESSARY BUT CAN LEAVE IT FOR THE FUTURE
-    for (i, mel) in mel_iter.enumerate() {
-        let (new_text, new_tokens) = mels_to_text(whisper, bpe, lang, mel, padding)?;
+    for mel in mel_iter {
+        let (_new_text, new_tokens) = mels_to_text(whisper, bpe, lang, mel, padding)?;
 
         if let Some((prev_index, curr_index)) =
             find_chunk_overlap(&tokens[..], &new_tokens[..], 40, 3)
@@ -70,7 +70,7 @@ fn waveform_to_mel_tensor<B: Backend>(
     let shift = n_samples_per_tensor.saturating_sub(chunk_overlap).max(1);
     let iter_len = waveform.len().saturating_sub(1).div(shift) + 1;
 
-    (0..iter_len).into_iter().map(move |i| {
+    (0..iter_len).map(move |i| {
         let start = i * shift;
         let end = (start + n_samples_per_tensor).min(waveform.len());
 
@@ -78,18 +78,14 @@ fn waveform_to_mel_tensor<B: Backend>(
 
         let waveform: Tensor<B, 1> =
             Tensor::from_data(TensorData::new(slice.to_vec(), [slice.len()]), device);
-        let mels = prep_audio(waveform.unsqueeze(), sample_rate as f64, n_mels);
-
-        mels
+        prep_audio(waveform.unsqueeze(), sample_rate as f64, n_mels)
     })
 }
-
-use std::f32;
 
 #[derive(Clone)]
 struct BeamSearchToken {
     token: usize,
-    log_prob: f64,
+    _log_prob: f64,
 }
 
 fn mels_to_text<B: Backend>(
@@ -125,7 +121,7 @@ fn mels_to_text<B: Backend>(
 
     let start_token = bpe.special_token(SpecialToken::StartofTranscript).unwrap();
     let transcription_token = bpe.special_token(SpecialToken::Transcribe).unwrap();
-    let start_of_prev_token = bpe.special_token(SpecialToken::StartofPrev).unwrap();
+    let _start_of_prev_token = bpe.special_token(SpecialToken::StartofPrev).unwrap();
     let lang_token = bpe.special_token(SpecialToken::Language(lang)).unwrap();
     let _first_timestamp_token = bpe.special_token(SpecialToken::Timestamp(0.0)).unwrap();
     let end_token = bpe.special_token(SpecialToken::EndofText).unwrap();
@@ -142,7 +138,7 @@ fn mels_to_text<B: Backend>(
             .into_iter()
             .map(|tok| BeamSearchToken {
                 token: tok,
-                log_prob: 0.0,
+                _log_prob: 0.0,
             })
             .collect(),
         log_prob: 0.0,
@@ -152,7 +148,6 @@ fn mels_to_text<B: Backend>(
 
     let vocab_size = bpe.vocab_size();
     let special_tokens_maskout: Vec<f32> = (0..vocab_size)
-        .into_iter()
         .map(|token| {
             if bpe.is_special(token) {
                 neg_infty
@@ -220,7 +215,7 @@ fn mels_to_text<B: Backend>(
                         (
                             BeamSearchToken {
                                 token: token_id,
-                                log_prob,
+                                _log_prob: log_prob,
                             },
                             beam.log_prob + log_prob,
                         )
@@ -242,7 +237,7 @@ fn mels_to_text<B: Backend>(
 
     let beam_size = 5;
     let max_depth = 30;
-    let mut tokens: Vec<_> = beam::beam_search(
+    let tokens: Vec<_> = beam::beam_search(
         vec![initial_tokens],
         beamsearch_next,
         beamsearch_is_finished,
@@ -254,8 +249,7 @@ fn mels_to_text<B: Backend>(
     .collect();
 
     let text = bpe.decode(&tokens[..], false)?;
-
-    return Ok((text, tokens));
+    Ok((text, tokens))
 }
 
 fn find_chunk_overlap(

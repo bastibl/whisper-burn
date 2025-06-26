@@ -21,7 +21,7 @@ fn numpy_to_tensor<B: Backend, const D: usize>(
 ) -> Tensor<B, D> {
     let v = numpy_data.to_vec();
     let shape: Shape = v[0..D]
-        .into_iter()
+        .iter()
         .map(|&v| v as usize)
         .collect::<Vec<_>>()
         .into();
@@ -33,9 +33,7 @@ fn load_tensor<B: Backend, const D: usize>(
     path: &str,
     device: &B::Device,
 ) -> Result<Tensor<B, D>, Box<dyn Error>> {
-    let tensor_path = format!("{}/{}.npy", path, name);
-
-    println!("{}", tensor_path);
+    let tensor_path = format!("{path}/{name}.npy");
 
     let mut buf = vec![];
     std::fs::File::open(tensor_path)?.read_to_end(&mut buf)?;
@@ -102,10 +100,10 @@ fn load_multihead_self_attention<B: Backend>(
     path: &str,
     device: &B::Device,
 ) -> Result<MultiHeadSelfAttention<B>, Box<dyn Error>> {
-    let query = load_linear(&format!("{}/{}", path, "query"), device)?;
-    let key = load_linear(&format!("{}/{}", path, "key"), device)?;
-    let value = load_linear(&format!("{}/{}", path, "value"), device)?;
-    let out = load_linear(&format!("{}/{}", path, "out"), device)?;
+    let query = load_linear(&format!("{path}/query"), device)?;
+    let key = load_linear(&format!("{path}/key"), device)?;
+    let value = load_linear(&format!("{path}/value"), device)?;
+    let out = load_linear(&format!("{path}/out"), device)?;
 
     let n_head: usize = load_usize::<B>("n_head", path, device)?;
 
@@ -125,10 +123,10 @@ fn load_multihead_cross_attention<B: Backend>(
     path: &str,
     device: &B::Device,
 ) -> Result<MultiHeadCrossAttention<B>, Box<dyn Error>> {
-    let query = load_linear(&format!("{}/{}", path, "query"), device)?;
-    let key = load_linear(&format!("{}/{}", path, "key"), device)?;
-    let value = load_linear(&format!("{}/{}", path, "value"), device)?;
-    let out = load_linear(&format!("{}/{}", path, "out"), device)?;
+    let query = load_linear(&format!("{path}/query"), device)?;
+    let key = load_linear(&format!("{path}/key"), device)?;
+    let value = load_linear(&format!("{path}/value"), device)?;
+    let out = load_linear(&format!("{path}/out"), device)?;
 
     let n_head: usize = load_usize::<B>("n_head", path, device)?;
 
@@ -145,8 +143,8 @@ fn load_multihead_cross_attention<B: Backend>(
 }
 
 fn load_mlp<B: Backend>(path: &str, device: &B::Device) -> Result<MLP<B>, Box<dyn Error>> {
-    let lin1 = load_linear(&format!("{}/{}", path, "mlp1"), device)?;
-    let lin2 = load_linear(&format!("{}/{}", path, "mlp2"), device)?;
+    let lin1 = load_linear(&format!("{path}/mlp1"), device)?;
+    let lin2 = load_linear(&format!("{path}/mlp2"), device)?;
 
     let gelu = nn::Gelu::new();
 
@@ -181,10 +179,10 @@ fn load_residual_encoder_attention_block<B: Backend>(
     path: &str,
     device: &B::Device,
 ) -> Result<ResidualEncoderAttentionBlock<B>, Box<dyn Error>> {
-    let attn = load_multihead_self_attention(&format!("{}/{}", path, "attn"), device)?;
-    let attn_ln = load_layer_norm(&format!("{}/{}", path, "attn_ln"), device)?;
-    let mlp = load_mlp(&format!("{}/{}", path, "mlp"), device)?;
-    let mlp_ln = load_layer_norm(&format!("{}/{}", path, "mlp_ln"), device)?;
+    let attn = load_multihead_self_attention(&format!("{path}/attn"), device)?;
+    let attn_ln = load_layer_norm(&format!("{path}/attn_ln"), device)?;
+    let mlp = load_mlp(&format!("{path}/mlp"), device)?;
+    let mlp_ln = load_layer_norm(&format!("{path}/mlp_ln"), device)?;
 
     let residual_block = ResidualEncoderAttentionBlock {
         attn,
@@ -200,12 +198,12 @@ fn load_residual_decoder_attention_block<B: Backend>(
     path: &str,
     device: &B::Device,
 ) -> Result<ResidualDecoderAttentionBlock<B>, Box<dyn Error>> {
-    let attn = load_multihead_self_attention(&format!("{}/{}", path, "attn"), device)?;
-    let attn_ln = load_layer_norm(&format!("{}/{}", path, "attn_ln"), device)?;
-    let cross_attn = load_multihead_cross_attention(&format!("{}/{}", path, "cross_attn"), device)?;
-    let cross_attn_ln = load_layer_norm(&format!("{}/{}", path, "cross_attn_ln"), device)?;
-    let mlp = load_mlp(&format!("{}/{}", path, "mlp"), device)?;
-    let mlp_ln = load_layer_norm(&format!("{}/{}", path, "mlp_ln"), device)?;
+    let attn = load_multihead_self_attention(&format!("{path}/attn"), device)?;
+    let attn_ln = load_layer_norm(&format!("{path}/attn_ln"), device)?;
+    let cross_attn = load_multihead_cross_attention(&format!("{path}/cross_attn"), device)?;
+    let cross_attn_ln = load_layer_norm(&format!("{path}/cross_attn_ln"), device)?;
+    let mlp = load_mlp(&format!("{path}/mlp"), device)?;
+    let mlp_ln = load_layer_norm(&format!("{path}/mpl_ln"), device)?;
 
     let residual_block = ResidualDecoderAttentionBlock {
         attn,
@@ -232,16 +230,16 @@ fn load_audio_encoder<B: Backend>(
         .with_padding(PaddingConfig1d::Explicit(1))
         .with_stride(2);
 
-    let conv1 = load_conv1d(&format!("{}/{}", path, "conv1"), conv1_config, device)?;
-    let conv2 = load_conv1d(&format!("{}/{}", path, "conv2"), conv2_config, device)?;
+    let conv1 = load_conv1d(&format!("{path}/conv1"), conv1_config, device)?;
+    let conv2 = load_conv1d(&format!("{path}/conv2"), conv2_config, device)?;
 
     let n_layer = load_usize::<B>("n_layer", path, device)?;
 
     let blocks: Vec<ResidualEncoderAttentionBlock<B>> = (0..n_layer)
-        .map(|i| load_residual_encoder_attention_block(&format!("{}/block_{}", path, i), device))
+        .map(|i| load_residual_encoder_attention_block(&format!("{path}/block_{i}"), device))
         .collect::<Result<_, _>>()?;
 
-    let ln_post = load_layer_norm(&format!("{}/{}", path, "ln_post"), device)?;
+    let ln_post = load_layer_norm(&format!("{path}/ln_post"), device)?;
     let positional_embedding = load_tensor::<B, 2>("positional_embedding", path, device)?;
 
     let [n_audio_ctx, _] = positional_embedding.dims();
@@ -280,12 +278,12 @@ fn load_text_decoder<B: Backend>(
 
     let n_layer = load_usize::<B>("n_layer", path, device)?;
     let blocks: Vec<ResidualDecoderAttentionBlock<B>> = (0..n_layer)
-        .map(|i| load_residual_decoder_attention_block(&format!("{}/block_{}", path, i), device))
+        .map(|i| load_residual_decoder_attention_block(&format!("{path}/block_{i}"), device))
         .collect::<Result<_, _>>()?;
 
     let n_text_head = blocks[0].attn.n_head;
 
-    let ln = load_layer_norm(&format!("{}/{}", path, "ln"), device)?;
+    let ln = load_layer_norm(&format!("{path}/ln"), device)?;
 
     let [n_text_ctx, n_text_state] = positional_embedding.dims();
     let mask = attn_decoder_mask(n_text_ctx, device);
@@ -317,8 +315,8 @@ pub fn load_whisper<B: Backend>(
     path: &str,
     device: &B::Device,
 ) -> Result<(Whisper<B>, WhisperConfig), Box<dyn Error>> {
-    let (encoder, encoder_config) = load_audio_encoder(&format!("{}/{}", path, "encoder"), device)?;
-    let (decoder, decoder_config) = load_text_decoder(&format!("{}/{}", path, "decoder"), device)?;
+    let (encoder, encoder_config) = load_audio_encoder(&format!("{path}/encoder"), device)?;
+    let (decoder, decoder_config) = load_text_decoder(&format!("{path}/decoder"), device)?;
 
     let whisper = Whisper { encoder, decoder };
 

@@ -1,7 +1,5 @@
 pub mod load;
 
-use std::f32::NEG_INFINITY;
-
 use burn::{
     config::Config,
     module::{Module, Param},
@@ -92,7 +90,6 @@ impl TextDecoderConfig {
             device,
         );
         let blocks: Vec<_> = (0..self.n_text_layer)
-            .into_iter()
             .map(|_| {
                 ResidualDecoderAttentionBlockConfig::new(self.n_text_state, self.n_text_head)
                     .init(device)
@@ -134,6 +131,7 @@ impl<B: Backend> TextDecoder<B> {
 
         assert!(seq_len <= self.n_text_ctx,);
 
+        #[allow(clippy::single_range_in_vec_init)]
         let x = embedding(self.token_embedding.val(), x)
             + self
                 .positional_embedding
@@ -149,7 +147,7 @@ impl<B: Backend> TextDecoder<B> {
         }
 
         let x = self.ln.forward(x);
-        return x.matmul(self.token_embedding.val().transpose().unsqueeze::<3>());
+        x.matmul(self.token_embedding.val().transpose().unsqueeze::<3>())
     }
 
     fn ctx_size(&self) -> usize {
@@ -178,7 +176,6 @@ impl AudioEncoderConfig {
             .init(device);
         let gelu2 = nn::Gelu::new();
         let blocks: Vec<_> = (0..self.n_audio_layer)
-            .into_iter()
             .map(|_| {
                 ResidualEncoderAttentionBlockConfig::new(self.n_audio_state, self.n_audio_head)
                     .init(device)
@@ -233,6 +230,7 @@ impl<B: Backend> AudioEncoder<B> {
 
         let x = x.swap_dims(1, 2);
         let k = x.dims()[1];
+        #[allow(clippy::single_range_in_vec_init)]
         let x = x + self
             .positional_embedding
             .val()
@@ -244,15 +242,11 @@ impl<B: Backend> AudioEncoder<B> {
             x = block.forward(x);
         }
 
-        return self.ln_post.forward(x);
+        self.ln_post.forward(x)
     }
 
     fn ctx_size(&self) -> usize {
         self.n_audio_ctx
-    }
-
-    fn mel_size(&self) -> usize {
-        self.n_mels
     }
 }
 
@@ -290,8 +284,7 @@ pub struct ResidualEncoderAttentionBlock<B: Backend> {
 impl<B: Backend> ResidualEncoderAttentionBlock<B> {
     fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
         let x = x.clone() + self.attn.forward(self.attn_ln.forward(x), None);
-        let x = x.clone() + self.mlp.forward(self.mlp_ln.forward(x));
-        return x;
+        x.clone() + self.mlp.forward(self.mlp_ln.forward(x))
     }
 }
 
@@ -337,8 +330,7 @@ impl<B: Backend> ResidualDecoderAttentionBlock<B> {
     fn forward(&self, x: Tensor<B, 3>, xa: Tensor<B, 3>, mask: Tensor<B, 2>) -> Tensor<B, 3> {
         let x = x.clone() + self.attn.forward(self.attn_ln.forward(x), Some(mask));
         let x = x.clone() + self.cross_attn.forward(self.cross_attn_ln.forward(x), xa);
-        let x = x.clone() + self.mlp.forward(self.mlp_ln.forward(x));
-        return x;
+        x.clone() + self.mlp.forward(self.mlp_ln.forward(x))
     }
 }
 
@@ -368,9 +360,7 @@ impl<B: Backend> MLP<B> {
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
         let x = self.lin1.forward(x);
         let x = self.gelu.forward(x);
-        let x = self.lin2.forward(x);
-
-        return x;
+        self.lin2.forward(x)
     }
 }
 
@@ -419,7 +409,7 @@ impl<B: Backend> MultiHeadSelfAttention<B> {
 
         let wv = qkv_attention(q, k, v, mask, self.n_head);
 
-        return self.out.forward(wv);
+        self.out.forward(wv)
     }
 }
 
@@ -468,7 +458,7 @@ impl<B: Backend> MultiHeadCrossAttention<B> {
 
         let wv = qkv_attention(q, k, v, None, self.n_head);
 
-        return self.out.forward(wv);
+        self.out.forward(wv)
     }
 }
 
@@ -509,9 +499,7 @@ pub fn qkv_attention<B: Backend>(
 
     // normalize value weightings
     let w = softmax(qk, 3);
-    let o = w.matmul(v).swap_dims(1, 2).flatten(2, 3);
-
-    return o;
+    w.matmul(v).swap_dims(1, 2).flatten(2, 3)
 }
 
 pub fn attn_decoder_mask<B: Backend>(seq_length: usize, device: &B::Device) -> Tensor<B, 2> {
@@ -519,9 +507,9 @@ pub fn attn_decoder_mask<B: Backend>(seq_length: usize, device: &B::Device) -> T
 
     for i in 0..(seq_length - 1) {
         let values =
-            Tensor::<B, 2>::zeros([1, seq_length - (i + 1)], device).add_scalar(NEG_INFINITY);
+            Tensor::<B, 2>::zeros([1, seq_length - (i + 1)], device).add_scalar(f32::NEG_INFINITY);
         mask = mask.slice_assign([i..i + 1, i + 1..seq_length], values);
     }
 
-    return mask;
+    mask
 }

@@ -1,38 +1,26 @@
 #![recursion_limit = "512"]
-use anyhow::{Error as E, Result};
 use burn::{
     backend::wgpu::{Wgpu, WgpuDevice},
     config::Config,
     module::Module,
-    prelude::*,
-    record::{
-        DefaultRecorder, FullPrecisionSettings, NamedMpkFileRecorder, Recorder, RecorderError,
-    },
-    tensor::{self, backend::Backend, Tensor},
+    record::{FullPrecisionSettings, NamedMpkFileRecorder, Recorder},
+    tensor::{backend::Backend},
 };
-use chrono::Local;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::StreamConfig;
-use hound::{self, SampleFormat};
-use num_traits::ToPrimitive;
-use rtrb::{Consumer, RingBuffer};
+use rtrb::RingBuffer;
 use std::{
-    collections::{HashMap, VecDeque},
     env,
     fs::{File, OpenOptions},
-    io,
-    io::Write,
     iter, process,
-    sync::{mpsc, Arc, Condvar, Mutex},
+    sync::{mpsc, Arc, Mutex},
     time::Instant,
 };
 use strum::IntoEnumIterator;
-use webrtc_vad::{SampleRate, Vad, VadMode};
+use webrtc_vad::{Vad, VadMode};
 use whisper::{
-    audio::prep_audio,
-    helper::*,
-    model::{self, *},
-    token::{self, Gpt2Tokenizer, Language, SpecialToken},
+    model::*,
+    token::{Gpt2Tokenizer, Language},
     transcribe::waveform_to_text,
 };
 
@@ -45,7 +33,7 @@ fn main() {
     let (model_name, lang) = parse_args();
 
     let tensor_device = WgpuDevice::default();
-    let (bpe, whisper_config, whisper) = load_model::<Wgpu>(&model_name, &tensor_device);
+    let (bpe, _whisper_config, whisper) = load_model::<Wgpu>(&model_name, &tensor_device);
     println!("Model {} loaded successfully", &model_name);
 
     let file = Arc::new(Mutex::new(
@@ -82,7 +70,7 @@ fn parse_args() -> (String, Language) {
     let lang = match Language::iter().find(|lang| lang.as_str() == lang_str) {
         Some(lang) => lang,
         None => {
-            eprintln!("Invalid language abbreviation: {}", lang_str);
+            eprintln!("Invalid language abbreviation: {lang_str}");
             process::exit(1);
         }
     };
@@ -97,16 +85,16 @@ fn load_model<B: Backend>(
     let bpe = match Gpt2Tokenizer::new(model_name) {
         Ok(bpe) => bpe,
         Err(e) => {
-            eprintln!("Failed to load tokenizer: {}", e);
+            eprintln!("Failed to load tokenizer: {e}");
             process::exit(1);
         }
     };
 
     println!("name {model_name}");
-    let whisper_config = match WhisperConfig::load(&format!("{}/{}.cfg", model_name, model_name)) {
+    let whisper_config = match WhisperConfig::load(format!("{model_name}/{model_name}.cfg")) {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Failed to load whisper config: {}", e);
+            eprintln!("Failed to load whisper config: {e}");
             process::exit(1);
         }
     };
@@ -114,18 +102,21 @@ fn load_model<B: Backend>(
     println!("Loading model...");
     let whisper: Whisper<B> = {
         match NamedMpkFileRecorder::<FullPrecisionSettings>::new()
-            .load(format!("{}/{}", model_name, model_name).into(), tensor_device_ref)
+            .load(
+                format!("{model_name}/{model_name}").into(),
+                tensor_device_ref,
+            )
             .map(|record| whisper_config.init(tensor_device_ref).load_record(record))
         {
             Ok(whisper_model) => whisper_model,
             Err(e) => {
-                eprintln!("Failed to load whisper model file: {}", e);
+                eprintln!("Failed to load whisper model file: {e}");
                 process::exit(1);
             }
         }
     };
 
-    let whisper = whisper.to_device(&tensor_device_ref);
+    let whisper = whisper.to_device(tensor_device_ref);
 
     (bpe, whisper_config, whisper)
 }
@@ -155,7 +146,7 @@ fn normalize_audio_data_to_16k(input_data: &[f32], input_sample_rate: &f32) -> V
 
 fn process_audio_data(
     receiver: mpsc::Receiver<Vec<i16>>,
-    file: Arc<Mutex<File>>,
+    _file: Arc<Mutex<File>>,
     whisper: Whisper<Wgpu>,
     bpe: Gpt2Tokenizer,
     lang: Language,
@@ -166,11 +157,10 @@ fn process_audio_data(
         let audio_data_vectors = match receiver.recv() {
             Ok(data) => data,
             Err(e) => {
-                eprintln!("Error receiving data: {}", e);
+                eprintln!("Error receiving data: {e}");
                 process::exit(1);
             }
         };
-        let processed_len = audio_data_vectors.len();
 
         // //LEAVING THIS FOR NOW AS THEIR IS STILL A BIT OF AUDIO DISTORTION AND WANT TO DEBUG LATER
         // let spec = hound::WavSpec {
@@ -196,11 +186,11 @@ fn process_audio_data(
             .collect();
         let start_time = Instant::now(); // Capture the start time
         println!("running on chunk");
-        let (text, tokens) = match waveform_to_text(&whisper, &bpe, lang, speech_segment_f32, 16000)
+        let (text, _tokens) = match waveform_to_text(&whisper, &bpe, lang, speech_segment_f32, 16000)
         {
             Ok((text, tokens)) => (text, tokens),
             Err(e) => {
-                eprintln!("Error during transcription: {}", e);
+                eprintln!("Error during transcription: {e}");
                 process::exit(1);
             }
         };
@@ -251,7 +241,7 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                         .expect("Failed to push sample to ring buffer");
                 }
             },
-            move |err| eprintln!("Error: {}", err),
+            move |err| eprintln!("Error: {err}"),
             None,
         )
         .expect("Failed to build input stream");
@@ -277,7 +267,7 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                         audio_frame.push(value);
                     }
                     Err(err) => {
-                        println!("Error: {}", err);
+                        println!("Error: {err}");
                         break;
                     }
                 }
@@ -296,31 +286,27 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                             .expect("Failed to send data");
                         speech_segment.clear();
                     }
-                } else {
-                    if unactive_count > BUFFER_FRAME_COUNT {
-                        /*
-                            If more than 30 frames of unactive speech
-                            then consider end of segment and
-                            send over the channel to transcribing service
-                        */
-                        speaking = false;
-                        if speech_segment.len() > MINIMUM_SAMPLE_COUNT {
-                            //send data to the inference thread
-                            sender
-                                .send(speech_segment.clone())
-                                .expect("Failed to send data");
-                        }
-                        speech_segment.clear();
-                    } else {
-                        unactive_count += 1;
+                } else if unactive_count > BUFFER_FRAME_COUNT {
+                    /*
+                        If more than 30 frames of unactive speech
+                        then consider end of segment and
+                        send over the channel to transcribing service
+                    */
+                    speaking = false;
+                    if speech_segment.len() > MINIMUM_SAMPLE_COUNT {
+                        //send data to the inference thread
+                        sender
+                            .send(speech_segment.clone())
+                            .expect("Failed to send data");
                     }
+                    speech_segment.clear();
+                } else {
+                    unactive_count += 1;
                 }
-            } else {
-                if speech_active {
-                    speaking = true;
-                    unactive_count = 0;
-                    speech_segment.extend(audio_frame);
-                }
+            } else if speech_active {
+                speaking = true;
+                unactive_count = 0;
+                speech_segment.extend(audio_frame);
             }
         }
     }

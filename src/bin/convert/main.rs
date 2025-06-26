@@ -27,20 +27,20 @@ fn main() {
         match load_whisper(&model_name, &device) {
             Ok(model) => model,
             Err(e) => {
-                eprintln!("Error loading model {}: {}", model_name, e);
+                eprintln!("Error loading model {model_name}: {e}");
                 return;
             }
         };
 
     println!("Saving model...");
     if let Err(e) = save_whisper(whisper, &model_name) {
-        eprintln!("Error saving model {}: {}", model_name, e);
+        eprintln!("Error saving model {model_name}: {e}");
         return;
     }
 
     println!("Saving config...");
-    if let Err(e) = whisper_config.save(&format!("{}.cfg", model_name)) {
-        eprintln!("Error saving config for {}: {}", model_name, e);
+    if let Err(e) = whisper_config.save(format!("{model_name}.cfg")) {
+        eprintln!("Error saving config for {model_name}: {e}");
         return;
     }
 
