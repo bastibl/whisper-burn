@@ -82,13 +82,13 @@ fn waveform_to_mel_tensor<B: Backend>(
     })
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct BeamSearchToken {
     token: usize,
     _log_prob: f64,
 }
 
-fn mels_to_text<B: Backend>(
+pub fn mels_to_text<B: Backend>(
     whisper: &Whisper<B>,
     bpe: &Gpt2Tokenizer,
     lang: Language,
@@ -252,7 +252,7 @@ fn mels_to_text<B: Backend>(
     Ok((text, tokens))
 }
 
-fn find_chunk_overlap(
+pub fn find_chunk_overlap(
     prev_tokens: &[usize],
     curr_tokens: &[usize],
     max_n_offsets: usize,

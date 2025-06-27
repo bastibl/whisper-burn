@@ -1,5 +1,7 @@
-#[derive(Clone)]
-pub struct BeamNode<T: Clone> {
+use std::fmt::Debug;
+
+#[derive(Clone, Debug)]
+pub struct BeamNode<T: Clone + Debug> {
     pub seq: Vec<T>,
     pub log_prob: f64,
 }
@@ -12,12 +14,19 @@ pub fn beam_search<T, F, G>(
     max_depth: usize,
 ) -> Vec<T>
 where
-    T: Clone,
+    T: Clone + Debug,
     F: Fn(&[BeamNode<T>]) -> Vec<Vec<(T, f64)>> + Clone,
     G: Fn(&[T]) -> bool + Clone,
 {
     let mut beams = initial_beams;
     for _i in 0..max_depth {
+        beams.iter_mut().for_each(|b| {
+            b.log_prob = if b.log_prob.is_nan() {
+                f64::NEG_INFINITY
+            } else {
+                b.log_prob
+            };
+        });
         if let Some(beam) = beams
             .iter()
             .max_by(|a, b| a.log_prob.partial_cmp(&b.log_prob).unwrap())
@@ -45,7 +54,7 @@ pub fn beam_search_step<T, F, G>(
     beam_size: usize,
 ) -> Vec<BeamNode<T>>
 where
-    T: Clone,
+    T: Clone + Debug,
     F: Fn(&[BeamNode<T>]) -> Vec<Vec<(T, f64)>>,
     G: Fn(&[T]) -> bool,
 {
