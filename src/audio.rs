@@ -17,7 +17,7 @@ pub fn max_waveform_samples(n_frame_max: usize) -> usize {
 }
 
 fn is_odd(x: usize) -> bool {
-    x % 2 != 0
+    !x.is_multiple_of(2)
 }
 
 /// Transform an input waveform into a format interpretable by Whisper.

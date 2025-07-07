@@ -1,4 +1,5 @@
 use super::*;
+use burn::tensor::Shape;
 use burn::{
     module::Module,
     nn::{
@@ -9,22 +10,22 @@ use burn::{
     prelude::*,
     tensor::{backend::Backend, Tensor},
 };
-
-use burn::tensor::Shape;
-use npy::{self, NpyData};
+use npyz::NpyFile;
 use std::error::Error;
 use std::io::Read;
 
-fn numpy_to_tensor<B: Backend, const D: usize>(
-    numpy_data: NpyData<f32>,
+fn numpy_to_tensor<B: Backend, R: Read, const D: usize>(
+    numpy_data: NpyFile<R>,
     device: &B::Device,
 ) -> Tensor<B, D> {
-    let v = numpy_data.to_vec();
+    let v: Vec<f32> = numpy_data.into_vec().unwrap();
     let shape: Shape = v[0..D]
         .iter()
         .map(|&v| v as usize)
         .collect::<Vec<_>>()
         .into();
+    // let end = std::cmp::min(v.len(), D + 10);
+    // println!("first {:?}   shape {:?}   next {:?}", &v[0..D], shape, &v[D..end]);
     Tensor::<B, 1>::from_floats(&v[D..], device).reshape(shape)
 }
 
@@ -35,10 +36,9 @@ fn load_tensor<B: Backend, const D: usize>(
 ) -> Result<Tensor<B, D>, Box<dyn Error>> {
     let tensor_path = format!("{path}/{name}.npy");
 
-    let mut buf = vec![];
-    std::fs::File::open(tensor_path)?.read_to_end(&mut buf)?;
+    let buf = std::fs::read(tensor_path)?;
 
-    let tensor_numpy: NpyData<f32> = NpyData::from_bytes(&buf)?;
+    let tensor_numpy = NpyFile::new(&buf[..])?;
 
     let tensor = numpy_to_tensor(tensor_numpy, device);
 
@@ -203,7 +203,7 @@ fn load_residual_decoder_attention_block<B: Backend>(
     let cross_attn = load_multihead_cross_attention(&format!("{path}/cross_attn"), device)?;
     let cross_attn_ln = load_layer_norm(&format!("{path}/cross_attn_ln"), device)?;
     let mlp = load_mlp(&format!("{path}/mlp"), device)?;
-    let mlp_ln = load_layer_norm(&format!("{path}/mpl_ln"), device)?;
+    let mlp_ln = load_layer_norm(&format!("{path}/mlp_ln"), device)?;
 
     let residual_block = ResidualDecoderAttentionBlock {
         attn,
@@ -277,12 +277,14 @@ fn load_text_decoder<B: Backend>(
     let positional_embedding = load_tensor::<B, 2>("positional_embedding", path, device)?;
 
     let n_layer = load_usize::<B>("n_layer", path, device)?;
+    println!("n_layer {n_layer}");
     let blocks: Vec<ResidualDecoderAttentionBlock<B>> = (0..n_layer)
         .map(|i| load_residual_decoder_attention_block(&format!("{path}/block_{i}"), device))
         .collect::<Result<_, _>>()?;
 
     let n_text_head = blocks[0].attn.n_head;
 
+    println!("load layer norm");
     let ln = load_layer_norm(&format!("{path}/ln"), device)?;
 
     let [n_text_ctx, n_text_state] = positional_embedding.dims();

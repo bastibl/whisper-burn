@@ -40,6 +40,14 @@ where
         // println!("Depth: {}", i);
     }
 
+    beams.iter_mut().for_each(|b| {
+        b.log_prob = if b.log_prob.is_nan() {
+            f64::NEG_INFINITY
+        } else {
+            b.log_prob
+        };
+    });
+
     beams
         .into_iter()
         .max_by(|a, b| a.log_prob.partial_cmp(&b.log_prob).unwrap())
@@ -102,7 +110,7 @@ fn get_top_elements<T>(elems: &[T], score: impl Fn(&T) -> f64, num: usize) -> Ve
             continue;
         }
 
-        if let Some((idx, _)) = scores.iter().enumerate().find(|(_, &s)| s >= score) {
+        if let Some((idx, _)) = scores.iter().enumerate().find(|(_, s)| **s >= score) {
             top_elems.insert(idx, elem);
             scores.insert(idx, score);
         } else {

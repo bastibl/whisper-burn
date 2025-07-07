@@ -273,12 +273,12 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                 }
             }
 
-            let speech_active = vad
-                .is_voice_segment(&audio_frame)
-                .expect("Failed to check voice segment");
+            // let speech_active = vad
+            //     .is_voice_segment(&audio_frame)
+            //     .expect("Failed to check voice segment");
             // println!("speaking  {speaking}   active {speech_active}");
-            if speaking {
-                if speech_active {
+            // if speaking {
+            //     if speech_active {
                     speech_segment.extend(audio_frame);
                     if speech_segment.len() > MAXIMUM_SAMPLE_COUNT {
                         sender
@@ -286,28 +286,28 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
                             .expect("Failed to send data");
                         speech_segment.clear();
                     }
-                } else if unactive_count > BUFFER_FRAME_COUNT {
-                    /*
-                        If more than 30 frames of unactive speech
-                        then consider end of segment and
-                        send over the channel to transcribing service
-                    */
-                    speaking = false;
-                    if speech_segment.len() > MINIMUM_SAMPLE_COUNT {
-                        //send data to the inference thread
-                        sender
-                            .send(speech_segment.clone())
-                            .expect("Failed to send data");
-                    }
-                    speech_segment.clear();
-                } else {
-                    unactive_count += 1;
-                }
-            } else if speech_active {
-                speaking = true;
-                unactive_count = 0;
-                speech_segment.extend(audio_frame);
-            }
+            //     } else if unactive_count > BUFFER_FRAME_COUNT {
+            //         /*
+            //             If more than 30 frames of unactive speech
+            //             then consider end of segment and
+            //             send over the channel to transcribing service
+            //         */
+            //         speaking = false;
+            //         if speech_segment.len() > MINIMUM_SAMPLE_COUNT {
+            //             //send data to the inference thread
+            //             sender
+            //                 .send(speech_segment.clone())
+            //                 .expect("Failed to send data");
+            //         }
+            //         speech_segment.clear();
+            //     } else {
+            //         unactive_count += 1;
+            //     }
+            // } else if speech_active {
+            //     speaking = true;
+            //     unactive_count = 0;
+            //     speech_segment.extend(audio_frame);
+            // }
         }
     }
 }

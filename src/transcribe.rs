@@ -32,28 +32,25 @@ pub fn waveform_to_text<B: Backend>(
         n_mels,
     );
 
-    let mut text = String::new();
+    let mut text;
     let mut tokens: Vec<usize> = Vec::new();
-    //IN THE FOLLOWING CODE, WE WILL PRETTY MUCH ALWAYS ITERATE JUST ONCE, SINCE WE ARE SENDING SUCH SHORT CLIPS OF AUDIO. THIS MEANS FIND CHUNK OVERLAP IS NOT NECESSARY BUT CAN LEAVE IT FOR THE FUTURE
     for mel in mel_iter {
         let (_new_text, new_tokens) = mels_to_text(whisper, bpe, lang, mel, padding)?;
 
         if let Some((prev_index, curr_index)) =
             find_chunk_overlap(&tokens[..], &new_tokens[..], 40, 3)
-        {
-            tokens.truncate(prev_index);
-            tokens.extend(&new_tokens[curr_index..]);
+            && prev_index > 0 && curr_index > 0 {
+                println!("prev index {prev_index}     curr_index {curr_index}");
+                tokens.truncate(prev_index);
+                tokens.extend(&new_tokens[curr_index..]);
         } else {
-            tokens.extend(new_tokens);
+            text = bpe.decode(&tokens[..], true).unwrap();
+            println!("{text}");
+            tokens = new_tokens;
         }
-
-        //tokens.extend(new_tokens);
-
-        text = bpe.decode(&tokens[..], true)?;
-        // println!("Chunk {}: {}\n", i, text);
-
-        //text += &new_text;
     }
+    text = bpe.decode(&tokens[..], true).unwrap();
+    println!("{text}");
 
     Ok((text, tokens))
 }
@@ -269,7 +266,7 @@ pub fn find_chunk_overlap(
             .skip(prev_start_index)
             .zip(curr_tokens.iter())
             .enumerate()
-            .filter(|(_, (&old, &new))| old == new);
+            .filter(|&(_, (&old, &new))| old == new);
 
         let n_overlap = overlap_iter.clone().count();
         if n_overlap > max_overlap {

@@ -1,7 +1,7 @@
 use serde::ser::StdError;
 use std::result;
 
-pub type Result<T> = result::Result<T, Box<(dyn StdError + Send + Sync + 'static)>>;
+pub type Result<T> = result::Result<T, Box<dyn StdError + Send + Sync + 'static>>;
 
 pub struct Gpt2Tokenizer {
     tokenizer: tokenizers::Tokenizer,
