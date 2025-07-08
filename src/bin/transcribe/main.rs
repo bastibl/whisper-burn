@@ -48,7 +48,7 @@ fn load_whisper_model_file<B: Backend>(
 use std::{env, fs, process};
 
 fn main() {
-    type Backend = burn::backend::Wgpu;
+    type Backend = burn::backend::Cuda;
     let device = Default::default();
 
     let args: Vec<String> = env::args().collect();

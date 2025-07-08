@@ -5,7 +5,7 @@ use crate::token::{self, *};
 use burn::{
     module::Module,
     prelude::*,
-    tensor::{activation::log_softmax, backend::Backend, ElementConversion},
+    tensor::{ElementConversion, activation::log_softmax, backend::Backend},
 };
 use std::iter;
 use std::ops::Div;
@@ -39,10 +39,12 @@ pub fn waveform_to_text<B: Backend>(
 
         if let Some((prev_index, curr_index)) =
             find_chunk_overlap(&tokens[..], &new_tokens[..], 40, 3)
-            && prev_index > 0 && curr_index > 0 {
-                println!("prev index {prev_index}     curr_index {curr_index}");
-                tokens.truncate(prev_index);
-                tokens.extend(&new_tokens[curr_index..]);
+            && prev_index > 0
+            && curr_index > 0
+        {
+            println!("prev index {prev_index}     curr_index {curr_index}");
+            tokens.truncate(prev_index);
+            tokens.extend(&new_tokens[curr_index..]);
         } else {
             text = bpe.decode(&tokens[..], true).unwrap();
             println!("{text}");
@@ -201,7 +203,7 @@ pub fn mels_to_text<B: Backend>(
                 .into_data()
         });
 
-        let continuations = beam_log_probs
+        beam_log_probs
             .zip(beams)
             .map(|(log_probs, beam)| {
                 log_probs
@@ -219,9 +221,7 @@ pub fn mels_to_text<B: Backend>(
                     })
                     .collect()
             })
-            .collect();
-
-        continuations
+            .collect()
     };
 
     let beamsearch_is_finished = |toks: &[BeamSearchToken]| {
