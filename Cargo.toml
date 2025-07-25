@@ -4,17 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# burn = { version = "0.17", features = [
-burn = { path = "/home/basti/src/burn/crates/burn", features = [
+burn = { version = "0.17", features = [
   # "ndarray",
   # "tui",
   # "train",
   "cuda",
-  # "vulkan",
+  "vulkan",
   # "wgpu",
   # "webgpu",
-  # "autotune",
-  # "fusion",
+  "autotune",
+  "fusion",
 ] }
 serde = {version = "1.0", features = ["std", "derive"]}
 num-traits = "0.2"
