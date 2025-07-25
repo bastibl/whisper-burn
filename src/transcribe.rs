@@ -20,8 +20,8 @@ pub fn waveform_to_text<B: Backend>(
     let device = whisper.devices()[0].clone();
 
     let n_ctx_max_encoder = whisper.encoder_ctx_size();
-    let padding = 200;
-    let n_waveform_samples_per_window = max_waveform_samples(n_ctx_max_encoder - padding);
+    let padding = 300;
+    let n_waveform_samples_per_window = max_waveform_samples(n_ctx_max_encoder - padding) * 3 / 4;
 
     let n_mels = whisper.encoder_mel_size();
     let mel_iter = waveform_to_mel_tensor(
@@ -37,8 +37,11 @@ pub fn waveform_to_text<B: Backend>(
     for mel in mel_iter {
         let (_new_text, new_tokens) = mels_to_text(whisper, bpe, lang, mel, padding)?;
 
+        println!("tokens {tokens:?}");
+        println!("new tokens {new_tokens:?}");
+
         if let Some((prev_index, curr_index)) =
-            find_chunk_overlap(&tokens[..], &new_tokens[..], 40, 3)
+            find_chunk_overlap(&tokens[..], &new_tokens[..], 20, 3)
             && prev_index > 0
             && curr_index > 0
         {
