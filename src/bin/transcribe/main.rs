@@ -2,9 +2,9 @@
 use burn::{config::Config, module::Module, tensor::backend::Backend};
 use hound::{self, SampleFormat};
 use strum::IntoEnumIterator;
-use whisper::model::*;
-use whisper::token::Language;
-use whisper::transcribe::waveform_to_text;
+use whisper_burn::model::*;
+use whisper_burn::token::Language;
+use whisper_burn::transcribe::waveform_to_text;
 
 fn load_audio_waveform(filename: &str) -> hound::Result<(Vec<f32>, usize)> {
     let reader = hound::WavReader::open(filename)?;
@@ -33,7 +33,7 @@ fn load_audio_waveform(filename: &str) -> hound::Result<(Vec<f32>, usize)> {
 }
 
 use burn::record::{DefaultRecorder, Recorder, RecorderError};
-use whisper::token::Gpt2Tokenizer;
+use whisper_burn::token::Gpt2Tokenizer;
 
 fn load_whisper_model_file<B: Backend>(
     config: &WhisperConfig,
@@ -48,8 +48,8 @@ fn load_whisper_model_file<B: Backend>(
 use std::{env, fs, process};
 
 fn main() {
-    type Backend = burn::backend::Cuda;
-    // type Backend = burn::backend::Vulkan;
+    //type Backend = burn::backend::Cuda;
+    type Backend = burn::backend::Vulkan;
     let device = Default::default();
 
     let args: Vec<String> = env::args().collect();
@@ -102,14 +102,17 @@ fn main() {
     };
 
     println!("Loading model...");
-    let whisper: Whisper<Backend> =
-        match load_whisper_model_file(&whisper_config, &format!("{model_name}/{model_name}"), &device) {
-            Ok(whisper_model) => whisper_model,
-            Err(e) => {
-                eprintln!("Failed to load whisper model file: {e}");
-                process::exit(1);
-            }
-        };
+    let whisper: Whisper<Backend> = match load_whisper_model_file(
+        &whisper_config,
+        &format!("{model_name}/{model_name}"),
+        &device,
+    ) {
+        Ok(whisper_model) => whisper_model,
+        Err(e) => {
+            eprintln!("Failed to load whisper model file: {e}");
+            process::exit(1);
+        }
+    };
 
     let whisper = whisper.to_device(&device);
     println!("Loading model... done");

@@ -4,21 +4,21 @@ use burn::{
     config::Config,
     module::Module,
     record::{FullPrecisionSettings, NamedMpkFileRecorder, Recorder},
-    tensor::{backend::Backend},
+    tensor::backend::Backend,
 };
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::StreamConfig;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::RingBuffer;
 use std::{
     env,
     fs::{File, OpenOptions},
     iter, process,
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     time::Instant,
 };
 use strum::IntoEnumIterator;
 use webrtc_vad::{Vad, VadMode};
-use whisper::{
+use whisper_burn::{
     model::*,
     token::{Gpt2Tokenizer, Language},
     transcribe::waveform_to_text,
@@ -186,14 +186,14 @@ fn process_audio_data(
             .collect();
         let start_time = Instant::now(); // Capture the start time
         println!("running on chunk");
-        let (text, _tokens) = match waveform_to_text(&whisper, &bpe, lang, speech_segment_f32, 16000)
-        {
-            Ok((text, tokens)) => (text, tokens),
-            Err(e) => {
-                eprintln!("Error during transcription: {e}");
-                process::exit(1);
-            }
-        };
+        let (text, _tokens) =
+            match waveform_to_text(&whisper, &bpe, lang, speech_segment_f32, 16000) {
+                Ok((text, tokens)) => (text, tokens),
+                Err(e) => {
+                    eprintln!("Error during transcription: {e}");
+                    process::exit(1);
+                }
+            };
         println!(
             "\nText: {}, Iteration: {}, Time:{:?}",
             text,
@@ -279,13 +279,13 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
             // println!("speaking  {speaking}   active {speech_active}");
             // if speaking {
             //     if speech_active {
-                    speech_segment.extend(audio_frame);
-                    if speech_segment.len() > MAXIMUM_SAMPLE_COUNT {
-                        sender
-                            .send(speech_segment.clone())
-                            .expect("Failed to send data");
-                        speech_segment.clear();
-                    }
+            speech_segment.extend(audio_frame);
+            if speech_segment.len() > MAXIMUM_SAMPLE_COUNT {
+                sender
+                    .send(speech_segment.clone())
+                    .expect("Failed to send data");
+                speech_segment.clear();
+            }
             //     } else if unactive_count > BUFFER_FRAME_COUNT {
             //         /*
             //             If more than 30 frames of unactive speech
