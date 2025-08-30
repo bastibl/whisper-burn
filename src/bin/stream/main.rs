@@ -24,8 +24,8 @@ use whisper_burn::{
     transcribe::waveform_to_text,
 };
 
-const BUFFER_FRAME_COUNT: usize = 35;
-const MINIMUM_SAMPLE_COUNT: usize = 1600 * 4; // @ 16kHz = 400ms
+// const BUFFER_FRAME_COUNT: usize = 35;
+// const MINIMUM_SAMPLE_COUNT: usize = 1600 * 4; // @ 16kHz = 400ms
 const MAXIMUM_SAMPLE_COUNT: usize = 1600 * 50;
 
 fn main() {
@@ -255,8 +255,8 @@ fn record_audio(sender: mpsc::Sender<Vec<i16>>) {
         checking the results against one another, the choice of length of small vs
         long segment will be hard to figure out
     */
-    let mut unactive_count = 0;
-    let mut speaking = false;
+    // let mut unactive_count = 0;
+    // let mut speaking = false;
     let mut speech_segment = Vec::<i16>::new();
     loop {
         if consumer.slots() > 160 {
