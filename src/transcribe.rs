@@ -151,19 +151,41 @@ pub fn mels_to_text<B: Backend>(
     let vocab_size = bpe.vocab_size();
     let special_tokens_maskout: Vec<f32> = (0..vocab_size)
         .map(|token| {
-            if bpe.is_special(token) {
+            if bpe.is_special(token) || (50364..=51864).contains(&token) {
                 neg_infty
             } else {
                 0.0
             }
         })
         .collect();
-    //special_tokens_maskout[end_token] = 1.0;
 
     let special_tokens_maskout: Tensor<B, 1> = Tensor::from_data(
         TensorData::new(special_tokens_maskout, [vocab_size]),
         &device,
     );
+
+    let time_token_maskout: Vec<f32> = (0..vocab_size)
+        .map(|token| {
+            if (50364..=51864).contains(&token) {
+                neg_infty
+            } else {
+                0.0
+            }
+        })
+        .collect();
+
+    let time_token_maskout: Tensor<B, 1> =
+        Tensor::from_data(TensorData::new(time_token_maskout, [vocab_size]), &device);
+
+    // Make them [1,1,V]
+    let mask_ts = time_token_maskout
+        .clone()
+        .unsqueeze_dim::<2>(0)
+        .unsqueeze_dim::<3>(0);
+    let mask_sp = special_tokens_maskout
+        .clone()
+        .unsqueeze_dim::<2>(0)
+        .unsqueeze_dim::<3>(0);
 
     let beamsearch_next = |beams: &[BeamNode]| {
         // convert tokens into tensor
@@ -187,23 +209,50 @@ pub fn mels_to_text<B: Backend>(
 
         let logits =
             whisper.forward_decoder(token_tensor, encoder_output.clone().repeat(&[beams.len()]));
-        let logits = if max_seq_len > 5 {
-            logits
-        } else {
-            logits + special_tokens_maskout.clone().unsqueeze()
-        };
-        let log_probs = log_softmax(logits, 2);
 
-        let [_n_batch, _n_token, _n_dict] = log_probs.dims();
+        // Safety: make sure axis 2 is vocab
+        let [_, _, v] = logits.dims();
+        assert_eq!(v, vocab_size, "decoder output not [B,S,V]");
+
+        // Generated-length accounting (don’t use global max_seq_len threshold)
+        let initial_len = 4; // SOT, <|lang|>, <|transcribe|>, <|notimestamps|>
+        let min_text_tokens: usize = 4; // keep EOT blocked for first N generated tokens
+
+        // For each beam, score only *its* current step and mask *that* vector
         let beam_log_probs = beams.iter().enumerate().map(|(i, beam)| {
-            let batch = i;
-            let token_index = beam.seq.len() - 1;
+            // current step for this beam
+            let token_index = beam.seq.len().saturating_sub(1);
 
-            log_probs
+            // slice per-beam, per-step logits -> [V]
+            let mut step_logits = logits
                 .clone()
-                .slice([batch..batch + 1, token_index..token_index + 1])
-                .flatten::<1>(0, 2)
-                .into_data()
+                .slice([i..i + 1, token_index..token_index + 1, 0..vocab_size]) // [1,1,V]
+                .squeeze::<2>(0) // [1,V] -> [V]
+                .squeeze::<1>(0); // [V]
+
+            // Decide which mask to apply for this beam at this step
+            let decoded_so_far = beam.seq.len().saturating_sub(initial_len);
+            // Always suppress timestamps; and for the first N generated tokens, also suppress specials/EOT.
+            let mask_vec = if decoded_so_far < min_text_tokens {
+                // [V] — blocks all specials incl. <|endoftext|> and timestamps
+                special_tokens_maskout.clone()
+            } else {
+                // [V] — blocks only timestamp tokens 50364..=51864
+                time_token_maskout.clone()
+            };
+
+            // Apply mask to the *exact* vector we will sample from
+            step_logits = step_logits + mask_vec;
+
+            // (Optional) sanity check: timestamps must be ~-inf here
+            // let ts_max = step_logits.clone().slice([50364..51865]).max().into_scalar();
+            // println!("beam {i} @pos {token_index}: max TS logit = {ts_max}");
+
+            // Now compute log-probs for this step along vocab axis
+            let step_log_probs = log_softmax(step_logits, 0); // [V]
+
+            // Return host data for enumeration (same as your previous code expected)
+            step_log_probs.into_data()
         });
 
         beam_log_probs
@@ -247,6 +296,13 @@ pub fn mels_to_text<B: Backend>(
     .into_iter()
     .map(|btok| btok.token)
     .collect();
+
+    println!("Generated tokens: {:?}", tokens);
+    for (i, &token) in tokens.iter().enumerate() {
+        if let Ok(text_part) = bpe.decode(&[token], false) {
+            println!("Token {}: {} -> '{}'", i, token, text_part);
+        }
+    }
 
     let text = bpe.decode(&tokens[..], false)?;
     Ok((text, tokens))

@@ -20,13 +20,6 @@ where
 {
     let mut beams = initial_beams;
     for i in 0..max_depth {
-        beams.iter_mut().for_each(|b| {
-            b.log_prob = if b.log_prob.is_nan() {
-                f64::NEG_INFINITY
-            } else {
-                b.log_prob
-            };
-        });
         if let Some(beam) = beams
             .iter()
             .max_by(|a, b| a.log_prob.partial_cmp(&b.log_prob).unwrap())
@@ -38,14 +31,6 @@ where
         beams = beam_search_step(beams, next.clone(), is_finished.clone(), beam_size);
         println!("Depth: {i}");
     }
-
-    beams.iter_mut().for_each(|b| {
-        b.log_prob = if b.log_prob.is_nan() {
-            f64::NEG_INFINITY
-        } else {
-            b.log_prob
-        };
-    });
 
     beams
         .into_iter()
