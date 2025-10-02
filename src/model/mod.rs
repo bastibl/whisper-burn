@@ -250,7 +250,7 @@ impl<B: Backend> AudioEncoder<B> {
     }
 }
 
-#[derive(Config)]
+#[derive(Config, Debug)]
 pub struct ResidualEncoderAttentionBlockConfig {
     n_state: usize,
     n_head: usize,
@@ -288,7 +288,7 @@ impl<B: Backend> ResidualEncoderAttentionBlock<B> {
     }
 }
 
-#[derive(Config)]
+#[derive(Config, Debug)]
 pub struct ResidualDecoderAttentionBlockConfig {
     n_state: usize,
     n_head: usize,
@@ -334,7 +334,7 @@ impl<B: Backend> ResidualDecoderAttentionBlock<B> {
     }
 }
 
-#[derive(Config)]
+#[derive(Config, Debug)]
 pub struct MLPConfig {
     n_state: usize,
 }
@@ -364,7 +364,7 @@ impl<B: Backend> MLP<B> {
     }
 }
 
-#[derive(Config)]
+#[derive(Config, Debug)]
 pub struct MultiHeadSelfAttentionConfig {
     n_state: usize,
     n_head: usize,
@@ -413,7 +413,7 @@ impl<B: Backend> MultiHeadSelfAttention<B> {
     }
 }
 
-#[derive(Config)]
+#[derive(Config, Debug)]
 pub struct MultiHeadCrossAttentionConfig {
     n_state: usize,
     n_head: usize,
