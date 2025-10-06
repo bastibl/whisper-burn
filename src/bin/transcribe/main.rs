@@ -10,10 +10,8 @@ fn load_audio_waveform(filename: &str) -> hound::Result<(Vec<f32>, usize)> {
     let reader = hound::WavReader::open(filename)?;
     let spec = reader.spec();
 
-    let _duration = reader.duration() as usize;
     let channels = spec.channels as usize;
     let sample_rate = spec.sample_rate as usize;
-    let _bits_per_sample = spec.bits_per_sample;
     let sample_format = spec.sample_format;
 
     assert_eq!(sample_rate, 16000, "The audio sample rate must be 16k.");
