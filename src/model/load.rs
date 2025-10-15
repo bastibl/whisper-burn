@@ -3,12 +3,11 @@ use burn::tensor::Shape;
 use burn::{
     module::Module,
     nn::{
-        self,
+        self, PaddingConfig1d,
         conv::{Conv1d, Conv1dConfig, Conv1dRecord},
-        PaddingConfig1d,
     },
     prelude::*,
-    tensor::{backend::Backend, Tensor},
+    tensor::{Tensor, backend::Backend},
 };
 use npyz::NpyFile;
 use std::error::Error;

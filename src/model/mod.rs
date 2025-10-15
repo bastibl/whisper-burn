@@ -4,12 +4,11 @@ use burn::{
     config::Config,
     module::{Module, Param},
     nn::{
-        self,
+        self, PaddingConfig1d,
         conv::{Conv1d, Conv1dConfig},
-        PaddingConfig1d,
     },
     prelude::*,
-    tensor::{activation::softmax, backend::Backend, module::embedding, Distribution, Int, Tensor},
+    tensor::{Distribution, Int, Tensor, activation::softmax, backend::Backend, module::embedding},
 };
 
 #[derive(Config, Debug)]
@@ -372,7 +371,7 @@ pub struct MultiHeadSelfAttentionConfig {
 
 impl MultiHeadSelfAttentionConfig {
     fn init<B: Backend>(&self, device: &B::Device) -> MultiHeadSelfAttention<B> {
-        assert!(self.n_state % self.n_head == 0,);
+        assert!(self.n_state.is_multiple_of(self.n_head),);
 
         let n_head = self.n_head;
         let query = nn::LinearConfig::new(self.n_state, self.n_state).init(device);
@@ -421,7 +420,7 @@ pub struct MultiHeadCrossAttentionConfig {
 
 impl MultiHeadCrossAttentionConfig {
     fn init<B: Backend>(&self, device: &B::Device) -> MultiHeadCrossAttention<B> {
-        assert!(self.n_state % self.n_head == 0,);
+        assert!(self.n_state.is_multiple_of(self.n_head),);
 
         let n_head = self.n_head;
         let query = nn::LinearConfig::new(self.n_state, self.n_state).init(device);

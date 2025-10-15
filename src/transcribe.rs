@@ -131,10 +131,7 @@ pub fn mels_to_text<B: Backend>(
     type BeamNode = beam::BeamNode<BeamSearchToken>;
 
     let initial_tokens = BeamNode {
-        seq: initial_tokens
-            .into_iter()
-            .map(BeamSearchToken)
-            .collect(),
+        seq: initial_tokens.into_iter().map(BeamSearchToken).collect(),
         log_prob: 0.0,
     };
 
@@ -243,10 +240,7 @@ pub fn mels_to_text<B: Backend>(
                     .map(|log_prob: f32| log_prob.elem::<f64>())
                     .enumerate()
                     .map(|(token_id, log_prob)| {
-                        (
-                            BeamSearchToken(token_id),
-                            beam.log_prob + log_prob,
-                        )
+                        (BeamSearchToken(token_id), beam.log_prob + log_prob)
                     })
                     .collect()
             })

@@ -1,4 +1,4 @@
-use burn::tensor::{activation::relu, backend::Backend, ElementConversion, Tensor};
+use burn::tensor::{ElementConversion, Tensor, activation::relu, backend::Backend};
 
 use crate::helper::*;
 
@@ -127,7 +127,9 @@ fn get_mel_filters_device<B: Backend>(
     #[allow(clippy::single_range_in_vec_init)]
     if !(all_zeros(mel_f.slice([0..(n_mels - 2)])) || all_zeros(relu(-weights.clone().max_dim(1))))
     {
-        println!("Empty filters detected in mel frequency basis. \nSome channels will produce empty responses. \nTry increasing your sampling rate (and fmax) or reducing n_mels.");
+        println!(
+            "Empty filters detected in mel frequency basis. \nSome channels will produce empty responses. \nTry increasing your sampling rate (and fmax) or reducing n_mels."
+        );
     }
 
     weights
