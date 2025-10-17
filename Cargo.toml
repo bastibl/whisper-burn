@@ -14,13 +14,14 @@ burn = { version = "0.18", features = [
   "autotune",
   "fusion",
 ] }
-serde = {version = "1.0", features = ["std", "derive"]}
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["std", "derive"] }
 num-traits = "0.2"
 hound = "3.5"
-tokenizers = {version = "0.22", default-features = false, features = [
+tokenizers = { version = "0.22", default-features = false, features = [
   "onig",
   "http",
-]}
+] }
 npyz = "0.8"
 cfg-if = "1.0"
 strum = "0.27"

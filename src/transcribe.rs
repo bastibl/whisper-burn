@@ -268,12 +268,12 @@ pub fn mels_to_text<B: Backend>(
     .map(|btok| btok.0)
     .collect();
 
-    println!("Generated tokens: {:?}", tokens);
-    for (i, &token) in tokens.iter().enumerate() {
-        if let Ok(text_part) = bpe.decode(&[token], false) {
-            println!("Token {}: {} -> '{}'", i, token, text_part);
-        }
-    }
+    // println!("Generated tokens: {:?}", tokens);
+    // for (i, &token) in tokens.iter().enumerate() {
+    //     if let Ok(text_part) = bpe.decode(&[token], false) {
+    //         println!("Token {}: {} -> '{}'", i, token, text_part);
+    //     }
+    // }
 
     let text = bpe.decode(&tokens[..], false)?;
     Ok((text, tokens))
